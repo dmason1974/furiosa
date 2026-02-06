@@ -1,0 +1,135 @@
+version: 5
+
+event:
+  key: "bt-r1-flagship"
+  name: "Beyond Thunderdome - Round 1: Capture the Flagship"
+  round: 1
+  teamSize: 5
+
+countryPools:
+  green:
+    label: "Americas"
+    colour: "Green"
+    playableCountries:
+      - Canada
+      - United States
+    aiCountries:
+       - Panama
+  orange:
+    label: "Asia"
+    colour: "Orange"
+    playableCountries:
+      - China
+      - Russia
+    aiCountries:
+       - Bangladesh
+  blue:
+    label: "Europe"
+    colour: "Blue"
+    playableCountries:
+      - United Kingdom
+      - France
+    aiCountries:
+       - Belgium
+  purple:
+    label: "MEA"
+    colour: "Purple"
+    playableCountries:
+      - Egypt
+      - South Africa
+    aiCountries:
+       - Mauritania
+
+maps:
+  - mapNumber: 1
+
+    theatres:
+      - id: "A"
+        name: "Pacific Theatre"
+        teams:
+          - teamName: "Team 1"
+            countryPool: green
+            players:
+              - "909294587854602310"  # lag
+              - "478638489496190986"  # steam
+
+          - teamName: "Team 4"
+            countryPool: orange
+            players:
+              - "423142657846411266"  # jj
+              - "478638489496190986"  # steam
+
+      - id: "B"
+        name: "Atlantic–Indian Theatre"
+        teams:
+          - teamName: "Team 2"
+            countryPool: blue
+            players:
+              - "423142657846411266"  # jj
+              - "478638489496190986"  # steam
+
+          - teamName: "Team 3"
+            countryPool: purple
+            players:
+              - "909294587854602310"  # lag
+              - "478638489496190986"  # steam
+
+              
+  - mapNumber: 2
+
+    theatres:
+      - id: "A"
+        name: "Pacific Theatre"
+        teams:
+          - teamName: "Team 1"
+            countryPool: green
+            players:
+              - "909294587854602310"  # lag
+              - "478638489496190986"  # steam
+
+          - teamName: "Team 4"
+            countryPool: orange
+            players:
+              - "423142657846411266"  # jj
+              - "478638489496190986"  # steam
+
+      - id: "B"
+        name: "Atlantic–Indian Theatre"
+        teams:
+          - teamName: "Team 2"
+            countryPool: blue
+            players:
+              - "423142657846411266"  # jj
+              - "478638489496190986"  # steam
+
+          - teamName: "Team 3"
+            countryPool: purple
+            players:
+              - "909294587854602310"  # lag
+              - "478638489496190986"  # steam
+    wars:
+      - id: "A"
+        name: "Pacific Theatre"
+        teams:
+          - zone: green
+            players:
+              - "909294587854602310"  # lag
+              - "478638489496190986"  # steam
+
+          - zone: orange
+            players:
+              - "423142657846411266"  # jj
+              - "478638489496190986"  # steam
+
+      - id: "B"
+        name: "Atlantic–Indian Theatre"
+        teams:
+          - zone: blue
+            players:
+              - "423142657846411266"  # jj
+              - "478638489496190986"  # steam
+
+          - zone: purple
+            players:
+              - "909294587854602310"  # lag
+              - "478638489496190986"  # steam

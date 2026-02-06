@@ -1,0 +1,46 @@
+# --------------------
+# Node / npm
+# --------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --------------------
+# Environment / secrets
+# --------------------
+.env
+.env.local
+.env.*.local
+
+# --------------------
+# Runtime state (DO NOT COMMIT)
+# --------------------
+data/state-*.json
+
+# --------------------
+# Logs
+# --------------------
+logs/
+*.log
+
+# --------------------
+# OS junk
+# --------------------
+.DS_Store
+Thumbs.db
+
+# --------------------
+# IDE / Editor
+# --------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --------------------
+# Build / cache (future-proofing)
+# --------------------
+dist/
+.cache/
