@@ -188,6 +188,32 @@ function isStaff(interaction) {
 async function assertBotAccess(guild, categoryId) {
   const category = await guild.channels.fetch(categoryId);
   if (!category) throw new Error(`EVENT_CATEGORY_ID not found: ${categoryId}`);
+
+  // Check bot permissions on the category
+  const botMember = await guild.members.fetchMe();
+  const requiredPerms = [
+    PermissionsBitField.Flags.CreatePublicThreads,
+    PermissionsBitField.Flags.CreatePrivateThreads,
+    PermissionsBitField.Flags.ManageChannels,
+    PermissionsBitField.Flags.SendMessages,
+  ];
+
+  const botPerms = category.permissionsFor(botMember);
+  const missingPerms = [];
+
+  for (const perm of requiredPerms) {
+    if (!botPerms.has(perm)) {
+      missingPerms.push(PermissionsBitField.resolve(perm).toString());
+    }
+  }
+
+  if (missingPerms.length > 0) {
+    throw new Error(
+      `Bot missing permissions on category: ${missingPerms.join(", ")}. ` +
+        `Please grant these permissions and try again.`
+    );
+  }
+
   return category;
 }
 
