@@ -11,34 +11,79 @@ countryPools:
     label: "Americas"
     colour: "Green"
     playableCountries:
+      - Argentina
+      - Australia
+      - Bolivia
+      - Brazil
       - Canada
-      - United States
-    aiCountries:
-       - Panama
+      - Chile
+      - Colombia
+      - Indonesia
+      - Japan
+      - Mexico
+      - Peru
+      - Philippines
+      - USA
+      - Venezuela
   orange:
     label: "Asia"
     colour: "Orange"
     playableCountries:
+      - Afghanistan
       - China
+      - India
+      - Iran
+      - Iraq
+      - Israel
+      - Japan
+      - Kazakhstan
+      - Mongolia
+      - Myanmar
+      - Pakistan
       - Russia
-    aiCountries:
-       - Bangladesh
+      - Syria
+      - Thailand
+      - Vietnam
   blue:
     label: "Europe"
     colour: "Blue"
     playableCountries:
-      - United Kingdom
+      - Austria
+      - Belarus
+      - Finland
       - France
-    aiCountries:
-       - Belgium
+      - Germany
+      - Greece
+      - Italy
+      - Norway
+      - Poland
+      - Romania
+      - Serbia
+      - Spain
+      - Sweden
+      - Turkey
+      - Ukraine
+      - United Kingdom
   purple:
     label: "MEA"
     colour: "Purple"
     playableCountries:
+      - Algeria
+      - Angola
+      - Cameroon
+      - Chad
+      - Dr Congo
       - Egypt
+      - Ethiopia
+      - Kenya
+      - Libya
+      - Mali
+      - Morocco
+      - Mozambique
+      - Namibia
+      - Nigeria
+      - Saudi Arabia
       - South Africa
-    aiCountries:
-       - Mauritania
 
 maps:
   - mapNumber: 1
@@ -47,89 +92,181 @@ maps:
       - id: "A"
         name: "Pacific Theatre"
         teams:
-          - teamName: "Team 1"
+          - teamName: "elite corps"
             countryPool: green
             players:
-              - "909294587854602310"  # lag
-              - "478638489496190986"  # steam
+              - "1300434026405957723"  # @Sweet 
+              - "1329850307697709106"  #  @hahi 
+              - "1060511933540859964"  #@JackRyan50 
+              - "1476022201420349664"  #@CDdirect777 
+              - "1180511528529690634"  # @Tommy
 
-          - teamName: "Team 4"
+          - teamName: "Knightz"
             countryPool: orange
             players:
-              - "423142657846411266"  # jj
-              - "478638489496190986"  # steam
+              - "576252684441747466"  # @Shadow 
+              - "163791876690804736"  # @Byson 
+              - "486178693497225227"  # @Viper 
+              - "790692367669657651"  # @𝐂𝐨𝐛𝐫𝐲𝐳
+              - "923995029276618763"  # @Goon
 
       - id: "B"
         name: "Atlantic–Indian Theatre"
         teams:
-          - teamName: "Team 2"
+          - teamName: "arch angels"
             countryPool: blue
             players:
-              - "423142657846411266"  # jj
-              - "478638489496190986"  # steam
+              - "1104056684466405386"  # @Damnitboi420 
+              - "954029763104755713"  #  @Matti4u 
+              - "1153153548134125698"  #  @Dongle69 
+              - "1141391518591090828"  #  @Levi 
+              - "1329395262082384005"  # @Lemon|lee
 
-          - teamName: "Team 3"
+          - teamName: "enemies united"
             countryPool: purple
             players:
-              - "909294587854602310"  # lag
-              - "478638489496190986"  # steam
+              - "791208651888001046"  #  @⋊ıuɓSlɐʎǝɹ
+              - "794357980073951273"  # @Die Rolle 
+              - "394479674853556236"  # @midnightclik
+              - "1425390645127942144"  # @deV17L
+              - "908034195744510012"  # @Deorge 
 
-              
   - mapNumber: 2
 
     theatres:
       - id: "A"
         name: "Pacific Theatre"
         teams:
-          - teamName: "Team 1"
+          - teamName: "Arbs Elites"
             countryPool: green
             players:
-              - "909294587854602310"  # lag
-              - "478638489496190986"  # steam
+              - "1382657831244791898"  # @faressaid 
+              - "1006561233035608165"  #  @sami.ali6838 
+              - "1420873672561918067"  #  @emademad
+              - "1445884530886971463"  #  @Mohamed 
+              - "363018089316614157"   # @alas6orh22 
 
-          - teamName: "Team 4"
+          - teamName: "[Redacted]"
             countryPool: orange
             players:
-              - "423142657846411266"  # jj
-              - "478638489496190986"  # steam
+              - "1355205626912837774"  # @Bud Roski 
+              - "292305175287169024"  # @Pezi 
+              - "703253468047081562"  # @dmooch1313 
+              - "614123476051165198"  # @HypeXrage3785 
+              - "523286239793643520"  # @SloGamer01 
+ 
+
 
       - id: "B"
         name: "Atlantic–Indian Theatre"
         teams:
-          - teamName: "Team 2"
+          - teamName: "Socialist Republics"
             countryPool: blue
             players:
-              - "423142657846411266"  # jj
-              - "478638489496190986"  # steam
+              - "366076067729113089"  # @BSmooth26 
+              - "562684133755715633"  # @Sambadagio 
+              - "1228593741804081214"  # @Greg Denis Swag$$$ 
+              - "989692953851228201"  # @Samno10 
+              - "1328728300016631911"  # @victor
 
-          - teamName: "Team 3"
+          - teamName: "Team OPEX"
             countryPool: purple
             players:
-              - "909294587854602310"  # lag
-              - "478638489496190986"  # steam
-    wars:
+              - "487708039030243339"  # @fred (tantrass)
+              - "796724491291983873"  # @ן๏ђภ-Ŧเtzɠєгคl๔ ๓เςкєץ ฬเllเร 
+              - "1117439321302114310" # @sickboy4183
+              - "1245027016030425183" # @Alpha Kngdm
+              - "474237770626236418"  # @darkshield_nn❓
+
+  - mapNumber: 3
+
+    theatres:
       - id: "A"
         name: "Pacific Theatre"
         teams:
-          - zone: green
+          - teamName: "Team Chupeta"
+            countryPool: green
             players:
-              - "909294587854602310"  # lag
-              - "478638489496190986"  # steam
+              - "1466465639295352873" # @DoD | Arisu∅ 
+              - "808894072122114061"  # @Basedcrawfish 
+              - "832827672287641630"  # @! Ghost 👻 
+              - "869975528122224660"  # @NEFF_SAVAGE_360 
+              - "721855750204555314"  # @Chase  A 
 
-          - zone: orange
+          - teamName: "UnemployedGaming"
+            countryPool: orange
             players:
-              - "423142657846411266"  # jj
-              - "478638489496190986"  # steam
+              - "902107477007536128"  # Lone Fighter™✘ 
+              - "1352767814821347489" #  @אושר בכל יום ՞߹ - ߹՞ 
+              - "748986108360261812"  #  @Fried_Waffles 
+              - "1431731001784270918" #  @TheThinker4363 
+              - "939803682130772041"  #  @Darth Sidious
 
       - id: "B"
         name: "Atlantic–Indian Theatre"
         teams:
-          - zone: blue
+          - teamName: "Pantheon Chillerz"
+            countryPool: blue
             players:
-              - "423142657846411266"  # jj
-              - "478638489496190986"  # steam
+              - "588070839606444042"  # @Colognefreak 
+              - "761255067294105611"  # @Aditya 
+              - "1050503459679522907"  # @Marzouki 
+              - "562695431235305483"  # @wirwollentanzen 
+              - "968186750201638952"  # @Conquest.
 
-          - zone: purple
+          - teamName: "NICK"
+            countryPool: purple
             players:
-              - "909294587854602310"  # lag
-              - "478638489496190986"  # steam
+              - "1320773014346010726"  # @Coop 
+              - "295407308295372800"  # @ElBadBunny 
+              - "340424757709111296"  # @Karma 
+              - "878304375381049394"  #@throwsomesaltonit 
+              - "1080963616288821371"  # @Dots
+
+  - mapNumber: 4
+
+    theatres:
+      - id: "A"
+        name: "Pacific Theatre"
+        teams:
+          - teamName: "Battlescard Lions"
+            countryPool: green
+            players:
+              - "994990366698766336"  # @sushamza 
+              - "842282543289466880"  # @SavageSaintJames 
+              - "1476022124425777173"  # @Wakz_the-owl 
+              - "760544037182373919"  # @APOLLO LI 
+              - "1253885614793691189"  # @Rocy100
+
+          - teamName: "The Freedom Fighters"
+            countryPool: orange
+            players:
+              - "978128719568834580"  # @knepp90 
+              - "312044176256794624"  # @Chris 
+              - "957704178107551854"  # @pixboom 
+              - "1131091065844273165"  # @tacky2x 
+              - "1226563416840343653"  # @Twoinches
+
+      - id: "B"
+        name: "Atlantic–Indian Theatre"
+        teams:
+          - teamName: "strike force"
+            countryPool: blue
+            players:
+              - "1230395101327523860" # @Shaggy jedi 
+              - "792147898120536125"  # @oliver_ryan 
+              - "1011005027160170577" # @JcK
+              - "615593233241735244"  # @EMPEROR NAVNEET 
+              - "792087709883170866"  # @urbex_anton
+
+          - teamName: "syndicate"
+            countryPool: purple
+            players:
+              - "1434721549298040913"  # @XxGunnaxX 
+              - "532366986928324623"  # @Newtz
+              - "1301788886783234068"  # @Dilligaf 
+              - "919278727198818364"  # @Mordreadth 
+              - "1093540650768662618"  # @leviathan0295
+
+ 
+

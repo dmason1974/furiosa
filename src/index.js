@@ -4,6 +4,9 @@ const fs = require("fs");
 const path = require("path");
 const yaml = require("js-yaml");
 
+const sqlite3 = require("sqlite3");
+const { open } = require("sqlite");
+
 const {
   Client,
   GatewayIntentBits,
@@ -123,6 +126,85 @@ function validateConfig(cfg) {
 }
 
 // ---------------------------
+// DB helpers
+// ---------------------------
+async function openDb() {
+  const dbPath = process.env.ELO_DB_PATH || path.join(process.cwd(), "local-db", "elo.sqlite3");
+  ensureDir(path.dirname(dbPath));
+
+  const db = await open({
+    filename: dbPath,
+    driver: sqlite3.Database,
+  });
+
+  // SQLite pragmas are per-connection
+  await db.exec("PRAGMA foreign_keys = ON;");
+  await db.exec("PRAGMA journal_mode = WAL;");
+
+  return db;
+}
+
+async function ensurePlayersTable(db) {
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS players (
+      player_id     TEXT PRIMARY KEY,                 -- Discord user.id
+      discord_name  TEXT NOT NULL,
+      ingame_name   TEXT NOT NULL,
+      elo           INTEGER NOT NULL DEFAULT 1000,
+      games_played  INTEGER NOT NULL DEFAULT 0,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_players_ingame_name ON players(ingame_name);
+  `);
+}
+
+function pickDiscordName(member) {
+  return member.displayName || member.user.username;
+}
+
+async function syncGuildMembersToPlayers(guild, db) {
+  const members = await guild.members.fetch();
+
+  const upsertSql = `
+    INSERT INTO players (player_id, discord_name, ingame_name)
+    VALUES (?, ?, ?)
+    ON CONFLICT(player_id) DO UPDATE SET
+      discord_name = excluded.discord_name,
+      updated_at = datetime('now')
+  `;
+
+  let humans = 0;
+  let bots = 0;
+
+  await db.exec("BEGIN IMMEDIATE;");
+  try {
+    for (const [, member] of members) {
+      if (member.user.bot) {
+        bots++;
+        continue;
+      }
+
+      const playerId = member.id;
+      const discordName = pickDiscordName(member);
+
+      // IGN unknown at this stage; keep empty string; do NOT overwrite on conflict.
+      await db.run(upsertSql, [playerId, discordName, ""]);
+
+      humans++;
+    }
+
+    await db.exec("COMMIT;");
+  } catch (e) {
+    await db.exec("ROLLBACK;");
+    throw e;
+  }
+
+  return { total: members.size, humans, bots };
+}
+
+// ---------------------------
 // Discord client
 // ---------------------------
 const client = new Client({
@@ -161,6 +243,9 @@ const teardownCommand = new SlashCommandBuilder()
       .setDescription("If true, deletes the state file after teardown completes")
   );
 
+const syncMembersCommand = new SlashCommandBuilder()
+  .setName("sync_members")
+  .setDescription("Sync all non-bot guild members into the Elo DB (players table)");
 
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
@@ -173,8 +258,9 @@ client.once("ready", async () => {
   // Register commands in this guild
   await guild.commands.create(setupCommand);
   await guild.commands.create(teardownCommand);
+  await guild.commands.create(syncMembersCommand);
 
-  console.log("Registered /setup and /teardown commands");
+  console.log("Registered /setup, /teardown and /sync_members commands");
 });
 
 // Permission check: staff only
@@ -271,11 +357,27 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.reply({ content: "Staff only.", ephemeral: true });
     }
 
-    const categoryId = process.env.EVENT_CATEGORY_ID;
-    if (!categoryId) throw new Error("Missing EVENT_CATEGORY_ID in .env");
-
     const guild = interaction.guild;
     if (!guild) throw new Error("This command must be run inside a server.");
+
+    if (interaction.commandName === "sync_members") {
+      await interaction.deferReply({ ephemeral: true });
+
+      const db = await openDb();
+      try {
+        await ensurePlayersTable(db);
+        const res = await syncGuildMembersToPlayers(guild, db);
+
+        return interaction.editReply(
+          `✅ Synced players.\nTotal fetched: ${res.total}\nHumans inserted/updated: ${res.humans}\nBots skipped: ${res.bots}`
+        );
+      } finally {
+        await db.close();
+      }
+    }
+
+    const categoryId = process.env.EVENT_CATEGORY_ID;
+    if (!categoryId) throw new Error("Missing EVENT_CATEGORY_ID in .env");
 
     const configBase = interaction.options.getString("config");
     const dryrun = interaction.options.getBoolean("dryrun") ?? false;
