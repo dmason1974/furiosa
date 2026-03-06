@@ -29,19 +29,15 @@ countryPools:
     label: "Asia"
     colour: "Orange"
     playableCountries:
-      - Afghanistan
       - China
       - India
-      - Iran
-      - Iraq
-      - Israel
-      - Japan
       - Kazakhstan
       - Mongolia
       - Myanmar
+      - North Korea
       - Pakistan
       - Russia
-      - Syria
+      - South Korea
       - Thailand
       - Vietnam
   blue:
@@ -68,6 +64,7 @@ countryPools:
     label: "MEA"
     colour: "Purple"
     playableCountries:
+      - Afghanistan
       - Algeria
       - Angola
       - Cameroon
@@ -75,6 +72,9 @@ countryPools:
       - Dr Congo
       - Egypt
       - Ethiopia
+      - Iran
+      - Iraq
+      - Israel
       - Kenya
       - Libya
       - Mali
@@ -84,6 +84,7 @@ countryPools:
       - Nigeria
       - Saudi Arabia
       - South Africa
+      - Syria
 
 maps:
   - mapNumber: 1
