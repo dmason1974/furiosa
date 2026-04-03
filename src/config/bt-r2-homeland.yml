@@ -1,0 +1,138 @@
+version: 5
+
+event:
+  key: "bt-r2-homeland"
+  name: "Beyond Thunderdome - Round 2: Homeland Supremacy"
+  round: 2
+  teamSize: 5
+
+countryPools:
+  green:
+    label: "Americas"
+    colour: "Green"
+    playableCountries:
+      - Argentina
+      - Australia
+      - Bolivia
+      - Brazil
+      - Canada
+      - Chile
+      - Colombia
+      - Indonesia
+      - Japan
+      - Mexico
+      - Peru
+      - Philippines
+      - USA
+      - Venezuela
+  orange:
+    label: "Asia"
+    colour: "Orange"
+    playableCountries:
+      - China
+      - India
+      - Kazakhstan
+      - Mongolia
+      - Myanmar
+      - North Korea
+      - Pakistan
+      - Russia
+      - South Korea
+      - Thailand
+      - Vietnam
+  blue:
+    label: "Europe"
+    colour: "Blue"
+    playableCountries:
+      - Austria
+      - Belarus
+      - Finland
+      - France
+      - Germany
+      - Greece
+      - Italy
+      - Norway
+      - Poland
+      - Romania
+      - Serbia
+      - Spain
+      - Sweden
+      - Turkey
+      - Ukraine
+      - United Kingdom
+  purple:
+    label: "MEA"
+    colour: "Purple"
+    playableCountries:
+      - Afghanistan
+      - Algeria
+      - Angola
+      - Cameroon
+      - Chad
+      - Dr Congo
+      - Egypt
+      - Ethiopia
+      - Iran
+      - Iraq
+      - Israel
+      - Kenya
+      - Libya
+      - Mali
+      - Morocco
+      - Mozambique
+      - Namibia
+      - Nigeria
+      - Saudi Arabia
+      - South Africa
+      - Syria
+
+maps:
+  - mapNumber: 1
+
+    theatres:
+      - id: "A"
+        name: "Pacific Theatre"
+        teams:
+          - teamName: "enemies united"
+            countryPool: green
+            players:
+              - "791208651888001046"  #  @⋊ıuɓSlɐʎǝɹ
+              - "794357980073951273"  # @Die Rolle 
+              - "394479674853556236"  # @midnightclik
+              - "1425390645127942144"  # @deV17L
+              - "908034195744510012"  # @Deorge 
+            subs:
+              - "1235642538325704714" # @white crime
+              - "485975276866764800" # @bob the wise
+
+          - teamName: "Socialist Republics"
+            countryPool: orange
+            players:
+              - "366076067729113089"  # @BSmooth26 
+              - "562684133755715633"  # @Sambadagio 
+              - "1228593741804081214"  # @Greg Denis Swag$$$ 
+              - "989692953851228201"  # @Samno10 
+              - "1328728300016631911"  # @victor
+
+      - id: "B"
+        name: "Atlantic–Indian Theatre"
+        teams:
+          - teamName: "The Freedom Fighters"
+            countryPool: blue
+            players:
+              - "978128719568834580"  # @knepp90 
+              - "312044176256794624"  # @Chris 
+              - "957704178107551854"  # @pixboom 
+              - "1131091065844273165"  # @tacky2x 
+              - "1226563416840343653"  # @Twoinches
+            subs:
+              - "866839219279757332" # creamlordljoe
+
+          - teamName: "Pantheon Chillerz"
+            countryPool: purple
+            players:
+              - "588070839606444042"  # @Colognefreak 
+              - "761255067294105611"  # @Aditya 
+              - "1050503459679522907"  # @Marzouki 
+              - "562695431235305483"  # @wirwollentanzen 
+              - "968186750201638952"  # @Conquest.

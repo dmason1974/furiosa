@@ -101,6 +101,9 @@ function validateConfig(cfg) {
           if (!team.teamName) errs.push(`Map ${m.mapNumber} theatre ${th.id}: team missing teamName`);
           if (!team.countryPool) errs.push(`Map ${m.mapNumber} theatre ${th.id}: team missing countryPool`);
           if (!Array.isArray(team.players)) errs.push(`Map ${m.mapNumber} theatre ${th.id}: team.players must be array`);
+          if (team.subs != null && !Array.isArray(team.subs)) {
+            errs.push(`Map ${m.mapNumber} theatre ${th.id}: team.subs must be array when provided`);
+          }
 
           if (team.countryPool && cfg.countryPools && !cfg.countryPools[team.countryPool]) {
             errs.push(`Map ${m.mapNumber} theatre ${th.id}: unknown countryPool "${team.countryPool}"`);
@@ -499,6 +502,7 @@ client.on("interactionCreate", async (interaction) => {
               const playable = (pool.playableCountries || []).map((c) => `- ${c}`).join("\n");
               const ai = (pool.aiCountries || []).map((c) => `- ${c}`).join("\n");
               const mentions = mentionList(team.players);
+              const subsMentions = mentionList(team.subs);
 
               const body = renderTemplate(template, {
                 EVENT_NAME: cfg.event.name,
@@ -515,6 +519,7 @@ client.on("interactionCreate", async (interaction) => {
                 PLAYABLE_COUNTRIES: playable || "- (none)",
                 AI_COUNTRIES: ai || "- (none)",
                 PLAYERS_MENTIONS: mentions || "",
+                SUBS_MENTIONS: subsMentions || "- None",
                 TEAM_SIZE: String(cfg.event.teamSize),
               });
 
@@ -522,6 +527,7 @@ client.on("interactionCreate", async (interaction) => {
 
               // Add players to the private thread (best-effort)
               await addPlayersToThread(guild, thread, team.players);
+              await addPlayersToThread(guild, thread, team.subs);
 
               state.threads[`${channelName}:${threadName}`].posted = true;
             }
