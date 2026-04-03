@@ -87,11 +87,11 @@ countryPools:
       - Syria
 
 maps:
-  - mapNumber: 1
+  - mapNumber: 10756195
 
     theatres:
       - id: "A"
-        name: "Pacific Theatre"
+        name: "Match A Green vs Orange"
         teams:
           - teamName: "enemies united"
             countryPool: green
@@ -115,7 +115,7 @@ maps:
               - "1328728300016631911"  # @victor
 
       - id: "B"
-        name: "Atlantic–Indian Theatre"
+        name: "Match B Blue vs Purple"
         teams:
           - teamName: "The Freedom Fighters"
             countryPool: blue

@@ -1,8 +1,9 @@
 ## TEAM THREAD
  
 **Round:** {{EVENT_ROUND}}  
+**Theatre:** {{THEATRE_NAME}}
 **Map:** {{MAP_NUMBER_PAD2}}  
-**Theatre:** {{THEATRE_NAME}}  
+**Password:** BTFury002
 
 ---
 
