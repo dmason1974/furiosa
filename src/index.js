@@ -4,9 +4,6 @@ const fs = require("fs");
 const path = require("path");
 const yaml = require("js-yaml");
 
-const sqlite3 = require("sqlite3");
-const { open } = require("sqlite");
-
 const {
   Client,
   GatewayIntentBits,
@@ -129,6 +126,18 @@ function validateConfig(cfg) {
 // DB helpers
 // ---------------------------
 async function openDb() {
+  let sqlite3;
+  let open;
+
+  try {
+    sqlite3 = require("sqlite3");
+    ({ open } = require("sqlite"));
+  } catch (err) {
+    throw new Error(
+      "SQLite support is unavailable on this host. Install compatible sqlite/sqlite3 packages before using /sync_members."
+    );
+  }
+
   const dbPath = process.env.ELO_DB_PATH || path.join(process.cwd(), "local-db", "elo.sqlite3");
   ensureDir(path.dirname(dbPath));
 
@@ -360,9 +369,11 @@ client.on("interactionCreate", async (interaction) => {
     const guild = interaction.guild;
     if (!guild) throw new Error("This command must be run inside a server.");
 
-    if (interaction.commandName === "sync_members") {
-      await interaction.deferReply({ ephemeral: true });
+    // Acknowledge immediately so config reads, validation, and Discord API work
+    // do not trip the 3-second interaction timeout.
+    await interaction.deferReply({ ephemeral: true });
 
+    if (interaction.commandName === "sync_members") {
       const db = await openDb();
       try {
         await ensurePlayersTable(db);
@@ -386,10 +397,10 @@ client.on("interactionCreate", async (interaction) => {
     const templatePath = path.join(__dirname, "config", `${configBase}.thread.md`);
 
     if (!fs.existsSync(configPath)) {
-      return interaction.reply({ content: `Config not found: ${configPath}`, ephemeral: true });
+      return interaction.editReply(`Config not found: ${configPath}`);
     }
     if (!fs.existsSync(templatePath)) {
-      return interaction.reply({ content: `Thread template not found: ${templatePath}`, ephemeral: true });
+      return interaction.editReply(`Thread template not found: ${templatePath}`);
     }
 
     const cfg = readYaml(configPath);
@@ -397,10 +408,7 @@ client.on("interactionCreate", async (interaction) => {
 
     const errors = validateConfig(cfg);
     if (errors.length) {
-      return interaction.reply({
-        content: `Config validation failed:\n- ${errors.join("\n- ")}`,
-        ephemeral: true,
-      });
+      return interaction.editReply(`Config validation failed:\n- ${errors.join("\n- ")}`);
     }
 
     // State file is keyed to event.key so you can re-run safely
@@ -408,8 +416,6 @@ client.on("interactionCreate", async (interaction) => {
     const state = loadState(statePath);
 
     if (interaction.commandName === "setup") {
-      await interaction.deferReply({ ephemeral: true });
-
       await assertBotAccess(guild, categoryId);
 
       const planLines = [];
@@ -555,8 +561,6 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (interaction.commandName === "teardown") {
-      await interaction.deferReply({ ephemeral: true });
-
       const statePath = path.join(process.cwd(), "data", `state-${cfg.event.key}.json`);
       const state = loadState(statePath);
 
