@@ -20,25 +20,14 @@ const elo = require("./elo");
 // ---------------------------
 // Helpers
 // ---------------------------
-function pad2(n) {
-  return String(n).padStart(2, "0");
-}
+function pad2(n) { return String(n).padStart(2, "0"); }
 
 function slugify(s) {
-  return String(s)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  return String(s).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-function readYaml(filePath) {
-  return yaml.load(fs.readFileSync(filePath, "utf8"));
-}
-
-function readText(filePath) {
-  return fs.readFileSync(filePath, "utf8");
-}
+function readYaml(filePath)  { return yaml.load(fs.readFileSync(filePath, "utf8")); }
+function readText(filePath)  { return fs.readFileSync(filePath, "utf8"); }
 
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
@@ -56,9 +45,7 @@ function saveState(statePath, state) {
 
 function renderTemplate(template, vars) {
   let out = template;
-  for (const [k, v] of Object.entries(vars)) {
-    out = out.replaceAll(`{{${k}}}`, v ?? "");
-  }
+  for (const [k, v] of Object.entries(vars)) out = out.replaceAll(`{{${k}}}`, v ?? "");
   return out;
 }
 
@@ -66,9 +53,16 @@ function mentionList(userIds) {
   return (userIds || []).map((id) => `<@${id}>`).join(" ");
 }
 
-// Extract Discord user IDs from a string containing <@id> or <@!id> mentions.
 function parseMentions(str) {
   return [...str.matchAll(/<@!?(\d+)>/g)].map((m) => m[1]);
+}
+
+function testFlag(interaction) {
+  return interaction.options.getBoolean("test") ?? false;
+}
+
+function testLabel(isTest) {
+  return isTest ? " **(TEST)**" : "";
 }
 
 function validateConfig(cfg) {
@@ -99,20 +93,13 @@ function validateConfig(cfg) {
           if (!team.teamName)    errs.push(`Map ${m.mapNumber} theatre ${th.id}: team missing teamName`);
           if (!team.countryPool) errs.push(`Map ${m.mapNumber} theatre ${th.id}: team missing countryPool`);
           if (!Array.isArray(team.players)) errs.push(`Map ${m.mapNumber} theatre ${th.id}: team.players must be array`);
-          if (team.subs != null && !Array.isArray(team.subs)) {
+          if (team.subs != null && !Array.isArray(team.subs))
             errs.push(`Map ${m.mapNumber} theatre ${th.id}: team.subs must be array when provided`);
-          }
-          if (team.countryPool && cfg.countryPools && !cfg.countryPools[team.countryPool]) {
+          if (team.countryPool && cfg.countryPools && !cfg.countryPools[team.countryPool])
             errs.push(`Map ${m.mapNumber} theatre ${th.id}: unknown countryPool "${team.countryPool}"`);
-          }
-          if (Array.isArray(team.players) && Number.isInteger(cfg.event?.teamSize)) {
-            if (team.players.length > cfg.event.teamSize) {
-              errs.push(
-                `Map ${m.mapNumber} theatre ${th.id} (${team.teamName}/${team.countryPool}): ` +
-                `has ${team.players.length} players but teamSize is ${cfg.event.teamSize}`
-              );
-            }
-          }
+          if (Array.isArray(team.players) && Number.isInteger(cfg.event?.teamSize) &&
+              team.players.length > cfg.event.teamSize)
+            errs.push(`Map ${m.mapNumber} theatre ${th.id} (${team.teamName}): has ${team.players.length} players but teamSize is ${cfg.event.teamSize}`);
         }
       }
     }
@@ -136,9 +123,7 @@ const setupCommand = new SlashCommandBuilder()
   .addStringOption((o) =>
     o.setName("config").setDescription("Config file base name in src/config (without extension)").setRequired(true)
   )
-  .addBooleanOption((o) =>
-    o.setName("dryrun").setDescription("Print plan without creating anything")
-  );
+  .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without creating anything"));
 
 const teardownCommand = new SlashCommandBuilder()
   .setName("teardown")
@@ -154,17 +139,31 @@ const syncMembersCommand = new SlashCommandBuilder()
   .setDescription("Sync all non-bot guild members into the Elo players table")
   .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
-const recordMatchCommand = new SlashCommandBuilder()
-  .setName("record_match")
-  .setDescription("Record a match result and update Elo ratings")
+const createMatchCommand = new SlashCommandBuilder()
+  .setName("create_match")
+  .setDescription("Create a pending match between two teams")
   .addStringOption((o) =>
-    o.setName("rank1").setDescription("1st place — @mention one or more players").setRequired(true)
+    o.setName("team1").setDescription("Team 1 — @mention one or more players").setRequired(true)
   )
   .addStringOption((o) =>
-    o.setName("rank2").setDescription("2nd place — @mention one or more players").setRequired(true)
+    o.setName("team2").setDescription("Team 2 — @mention one or more players").setRequired(true)
   )
-  .addStringOption((o) => o.setName("rank3").setDescription("3rd place — @mention one or more players"))
-  .addStringOption((o) => o.setName("rank4").setDescription("4th place — @mention one or more players"))
+  .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
+
+const recordResultCommand = new SlashCommandBuilder()
+  .setName("record_result")
+  .setDescription("Record the result of a pending match")
+  .addStringOption((o) =>
+    o.setName("match").setDescription("Select a pending match").setRequired(true).setAutocomplete(true)
+  )
+  .addStringOption((o) =>
+    o.setName("result").setDescription("Match outcome").setRequired(true)
+      .addChoices(
+        { name: "Team 1 wins", value: "team1" },
+        { name: "Team 2 wins", value: "team2" },
+        { name: "Walkover",    value: "walkover" }
+      )
+  )
   .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
 const ratingsCommand = new SlashCommandBuilder()
@@ -184,7 +183,7 @@ const matchmakeCommand = new SlashCommandBuilder()
   .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
 // ---------------------------
-// Permission check: staff only
+// Permission helpers
 // ---------------------------
 function isStaff(interaction) {
   const staffRoleId = process.env.EVENT_STAFF_ROLE_ID;
@@ -202,13 +201,11 @@ async function assertBotAccess(guild, categoryId) {
     PermissionsBitField.Flags.ManageChannels,
     PermissionsBitField.Flags.SendMessages,
   ];
-  const botPerms    = category.permissionsFor(botMember);
   const missingPerms = requiredPerms
-    .filter((p) => !botPerms.has(p))
+    .filter((p) => !category.permissionsFor(botMember).has(p))
     .map((p) => PermissionsBitField.resolve(p).toString());
-  if (missingPerms.length > 0) {
+  if (missingPerms.length > 0)
     throw new Error(`Bot missing permissions on category: ${missingPerms.join(", ")}`);
-  }
   return category;
 }
 
@@ -233,14 +230,10 @@ async function findChannelByNameInCategory(guild, categoryId, channelName) {
 
 async function findThreadByName(mapChannel, threadName) {
   const active = await mapChannel.threads.fetchActive();
-  const foundActive = active.threads.find((t) => t.name === threadName);
-  if (foundActive) return foundActive;
+  const found  = active.threads.find((t) => t.name === threadName);
+  if (found) return found;
   const archived = await mapChannel.threads.fetchArchived({ type: "private" }).catch(() => null);
-  if (archived?.threads) {
-    const foundArchived = archived.threads.find((t) => t.name === threadName);
-    if (foundArchived) return foundArchived;
-  }
-  return null;
+  return archived?.threads?.find((t) => t.name === threadName) || null;
 }
 
 // ---------------------------
@@ -261,7 +254,8 @@ client.once("ready", async () => {
     setupCommand,
     teardownCommand,
     syncMembersCommand,
-    recordMatchCommand,
+    createMatchCommand,
+    recordResultCommand,
     ratingsCommand,
     matchmakeCommand,
   ]);
@@ -273,6 +267,18 @@ client.once("ready", async () => {
 // ---------------------------
 client.on("interactionCreate", async (interaction) => {
   try {
+    // Autocomplete for /record_result match field
+    if (interaction.isAutocomplete()) {
+      if (!isStaff(interaction)) return interaction.respond([]);
+      const isTest  = interaction.options.get("test")?.value ?? false;
+      const focused = interaction.options.getFocused().toLowerCase();
+      const pending = await db.getPendingMatches(isTest);
+      const choices = pending
+        .filter((m) => m.label.toLowerCase().includes(focused))
+        .map((m) => ({ name: m.label.slice(0, 100), value: m.match_id }));
+      return interaction.respond(choices);
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     if (!isStaff(interaction)) {
@@ -284,9 +290,10 @@ client.on("interactionCreate", async (interaction) => {
 
     await interaction.deferReply({ ephemeral: true });
 
+    const isTest = testFlag(interaction);
+
     // ---- /sync_members ----
     if (interaction.commandName === "sync_members") {
-      const isTest = interaction.options.getBoolean("test") ?? false;
       await db.initSchema(isTest);
       const members = await guild.members.fetch();
       let humans = 0, bots = 0;
@@ -296,136 +303,116 @@ client.on("interactionCreate", async (interaction) => {
         humans++;
       }
       return interaction.editReply(
-        `✅ Synced players${isTest ? " **(TEST)**" : ""}.\nTotal: ${members.size} | Humans: ${humans} | Bots skipped: ${bots}`
+        `✅ Synced players${testLabel(isTest)}.\nTotal: ${members.size} | Humans: ${humans} | Bots skipped: ${bots}`
       );
     }
 
-    // ---- /record_match ----
-    if (interaction.commandName === "record_match") {
-      const isTest = interaction.options.getBoolean("test") ?? false;
-      const rankInputs = [
-        interaction.options.getString("rank1"),
-        interaction.options.getString("rank2"),
-        interaction.options.getString("rank3"),
-        interaction.options.getString("rank4"),
-      ].filter(Boolean);
+    // ---- /create_match ----
+    if (interaction.commandName === "create_match") {
+      const t1Ids = parseMentions(interaction.options.getString("team1"));
+      const t2Ids = parseMentions(interaction.options.getString("team2"));
 
-      // Parse mentions per rank slot
-      const rankGroups = rankInputs.map(parseMentions);
-      if (rankGroups.some((g) => g.length === 0)) {
-        return interaction.editReply("❌ Each rank must contain at least one @mention.");
-      }
+      if (t1Ids.length === 0 || t2Ids.length === 0)
+        return interaction.editReply("❌ Each team must have at least one @mention.");
 
-      // Flatten all player IDs and fetch from DB
-      const allIds    = rankGroups.flat();
+      const overlap = t1Ids.filter((id) => t2Ids.includes(id));
+      if (overlap.length > 0)
+        return interaction.editReply(`❌ A player cannot be in both teams: ${overlap.map((id) => `<@${id}>`).join(", ")}`);
+
+      const allIds    = [...t1Ids, ...t2Ids];
       const dbPlayers = await db.getPlayers(allIds, isTest);
       const byId      = Object.fromEntries(dbPlayers.map((p) => [p.player_id, p]));
+      const missing   = allIds.filter((id) => !byId[id]);
+      if (missing.length > 0)
+        return interaction.editReply(`❌ Not in DB (run /sync_members first): ${missing.map((id) => `<@${id}>`).join(", ")}`);
 
-      const missing = allIds.filter((id) => !byId[id]);
-      if (missing.length > 0) {
+      const toPlayer = (id) => ({ playerId: id, discordName: byId[id].discord_name });
+      const { matchId, label } = await db.createMatch(t1Ids.map(toPlayer), t2Ids.map(toPlayer), isTest);
+
+      return interaction.editReply(
+        `✅ Match created${testLabel(isTest)}.\n**${label}**\nID: \`${matchId}\`\nUse \`/record_result\` when the match is complete.`
+      );
+    }
+
+    // ---- /record_result ----
+    if (interaction.commandName === "record_result") {
+      const matchId = interaction.options.getString("match");
+      const result  = interaction.options.getString("result");
+
+      const winningTeam = result === "team1" ? 1 : result === "team2" ? 2 : null;
+      const { results, walkover, team1, team2 } = await db.completeMatch(matchId, winningTeam, elo, isTest);
+
+      if (walkover) {
+        const t1 = team1.map((p) => `<@${p.playerId}>`).join(", ");
+        const t2 = team2.map((p) => `<@${p.playerId}>`).join(", ");
         return interaction.editReply(
-          `❌ These players are not in the DB (run /sync_members first): ${missing.map((id) => `<@${id}>`).join(", ")}`
+          `✅ Walkover recorded${testLabel(isTest)}. No Elo changes.\n**Team 1:** ${t1}\n**Team 2:** ${t2}`
         );
       }
-
-      // Build teams array for elo.calculateMatch
-      const teams = rankGroups.map((ids) =>
-        ids.map((id) => ({
-          playerId:    byId[id].player_id,
-          discordName: byId[id].discord_name,
-          elo:         byId[id].elo,
-          gamesPlayed: byId[id].games_played,
-        }))
-      );
-
-      const results  = elo.calculateMatch(teams);
-      const matchId  = `M${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      const label    = rankGroups.map((ids, i) => `Rank${i + 1}: ${ids.map((id) => byId[id].discord_name).join(", ")}`).join(" | ");
-
-      await db.recordMatch(matchId, label, results, isTest);
 
       const lines = results.map(
         (r) => `<@${r.playerId}> (rank ${r.rank}): ${r.eloBefore} → **${r.eloAfter}** (${r.deltaElo >= 0 ? "+" : ""}${r.deltaElo})`
       );
-      return interaction.editReply(`✅ Match recorded${isTest ? " **(TEST)**" : ""}.\n${lines.join("\n")}`);
+      return interaction.editReply(`✅ Result recorded${testLabel(isTest)}.\n${lines.join("\n")}`);
     }
 
     // ---- /ratings ----
     if (interaction.commandName === "ratings") {
-      const isTest = interaction.options.getBoolean("test") ?? false;
       const rows = await db.getRatings(isTest);
-      if (rows.length === 0) {
+      if (rows.length === 0)
         return interaction.editReply("No players in the DB yet. Run /sync_members first.");
-      }
+
       const lines = rows.map(
         (r, i) => `${i + 1}. <@${r.player_id}> — **${Math.round(r.elo)}** (${r.games_played} games)`
       );
+      const header = `**Elo Leaderboard${testLabel(isTest)}**\n`;
       const chunks = [];
-      let chunk = "**Elo Leaderboard**\n";
+      let chunk = header;
       for (const line of lines) {
-        if (chunk.length + line.length > 1900) {
-          chunks.push(chunk);
-          chunk = "";
-        }
+        if (chunk.length + line.length > 1900) { chunks.push(chunk); chunk = ""; }
         chunk += line + "\n";
       }
       chunks.push(chunk);
-      const header = `**Elo Leaderboard${isTest ? " (TEST)" : ""}**\n`;
-      await interaction.editReply(chunks[0].replace("**Elo Leaderboard**\n", header));
-      for (const c of chunks.slice(1)) {
-        await interaction.followUp({ content: c, ephemeral: true });
-      }
+      await interaction.editReply(chunks[0]);
+      for (const c of chunks.slice(1)) await interaction.followUp({ content: c, ephemeral: true });
       return;
     }
 
     // ---- /matchmake ----
     if (interaction.commandName === "matchmake") {
-      const isTest    = interaction.options.getBoolean("test") ?? false;
       const playerStr = interaction.options.getString("players");
       const teamSize  = interaction.options.getInteger("team_size") ?? 1;
       const ids       = parseMentions(playerStr);
 
-      if (ids.length < 2) {
-        return interaction.editReply("❌ Mention at least 2 players.");
-      }
+      if (ids.length < 2) return interaction.editReply("❌ Mention at least 2 players.");
 
       const dbPlayers = await db.getPlayers(ids, isTest);
       const byId      = Object.fromEntries(dbPlayers.map((p) => [p.player_id, p]));
       const missing   = ids.filter((id) => !byId[id]);
-      if (missing.length > 0) {
-        return interaction.editReply(
-          `❌ Not in DB (run /sync_members first): ${missing.map((id) => `<@${id}>`).join(", ")}`
-        );
-      }
+      if (missing.length > 0)
+        return interaction.editReply(`❌ Not in DB (run /sync_members first): ${missing.map((id) => `<@${id}>`).join(", ")}`);
 
-      const players  = ids.map((id) => ({
-        playerId:    byId[id].player_id,
-        discordName: byId[id].discord_name,
-        elo:         byId[id].elo,
-      }));
-
-      const numTeams  = Math.floor(players.length / teamSize);
-      const teamSizes = Array(numTeams).fill(teamSize);
-      const { teams, quality } = elo.bestSplit(players, teamSizes);
+      const players  = ids.map((id) => ({ playerId: id, discordName: byId[id].discord_name, elo: byId[id].elo }));
+      const numTeams = Math.floor(players.length / teamSize);
+      const { teams, quality } = elo.bestSplit(players, Array(numTeams).fill(teamSize));
 
       const lines = teams.map((team, i) => {
-        const avg  = Math.round(team.reduce((s, p) => s + p.elo, 0) / team.length);
+        const avg   = Math.round(team.reduce((s, p) => s + p.elo, 0) / team.length);
         const names = team.map((p) => `<@${p.playerId}>`).join(" ");
         return `**Team ${i + 1}** (avg ${avg}): ${names}`;
       });
-
       const qualityStr = quality !== null ? `\nMatch quality: ${(quality * 100).toFixed(1)}%` : "";
-      return interaction.editReply(lines.join("\n") + qualityStr);
+      return interaction.editReply(lines.join("\n") + qualityStr + `\n\nUse \`/create_match\` to save this matchup.`);
     }
 
     // ---- /setup ----
     if (interaction.commandName === "setup") {
-      const categoryId = process.env.EVENT_CATEGORY_ID;
+      const categoryId  = process.env.EVENT_CATEGORY_ID;
       if (!categoryId) throw new Error("Missing EVENT_CATEGORY_ID in .env");
 
-      const configBase  = interaction.options.getString("config");
-      const dryrun      = interaction.options.getBoolean("dryrun") ?? false;
-      const configPath  = path.join(__dirname, "config", `${configBase}.yml`);
+      const configBase   = interaction.options.getString("config");
+      const dryrun       = interaction.options.getBoolean("dryrun") ?? false;
+      const configPath   = path.join(__dirname, "config", `${configBase}.yml`);
       const templatePath = path.join(__dirname, "config", `${configBase}.thread.md`);
 
       if (!fs.existsSync(configPath))   return interaction.editReply(`Config not found: ${configPath}`);
@@ -453,9 +440,8 @@ client.on("interactionCreate", async (interaction) => {
         if (!mapChannel) mapChannel = await findChannelByNameInCategory(guild, categoryId, channelName);
 
         if (!mapChannel) {
-          if (dryrun) {
-            planLines.push(`  - would create channel`);
-          } else {
+          if (dryrun) { planLines.push(`  - would create channel`); }
+          else {
             mapChannel = await guild.channels.create({
               name: channelName, type: ChannelType.GuildText, parent: categoryId, reason: "Event setup",
             });
@@ -473,7 +459,6 @@ client.on("interactionCreate", async (interaction) => {
             const pool       = cfg.countryPools[poolKey];
             const threadName = `${slugify(team.teamName)}-${slugify(poolKey)}`;
             planLines.push(`  - theatre ${theatre.id}: would ensure private thread "${threadName}"`);
-
             if (!mapChannel) continue;
 
             let threadId = state.threads?.[`${channelName}:${threadName}`]?.id;
@@ -497,8 +482,6 @@ client.on("interactionCreate", async (interaction) => {
             if (!dryrun && thread && state.threads[`${channelName}:${threadName}`]?.posted !== true) {
               const playable     = (pool.playableCountries || []).map((c) => `- ${c}`).join("\n");
               const ai           = (pool.aiCountries || []).map((c) => `- ${c}`).join("\n");
-              const mentions     = mentionList(team.players);
-              const subsMentions = mentionList(team.subs);
               const body = renderTemplate(template, {
                 EVENT_NAME: cfg.event.name, EVENT_ROUND: String(cfg.event.round),
                 EVENT_KEY: cfg.event.key, MAP_NUMBER: String(map.mapNumber),
@@ -507,7 +490,7 @@ client.on("interactionCreate", async (interaction) => {
                 COUNTRY_POOL_KEY: poolKey, COUNTRY_POOL_LABEL: pool.label || poolKey,
                 COUNTRY_POOL_COLOUR: pool.colour || "",
                 PLAYABLE_COUNTRIES: playable || "- (none)", AI_COUNTRIES: ai || "- (none)",
-                PLAYERS_MENTIONS: mentions || "", SUBS_MENTIONS: subsMentions || "- None",
+                PLAYERS_MENTIONS: mentionList(team.players), SUBS_MENTIONS: mentionList(team.subs) || "- None",
                 TEAM_SIZE: String(cfg.event.teamSize),
               });
               await thread.send(body);
@@ -529,12 +512,8 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (!dryrun) saveState(statePath, state);
-
-      if (dryrun) {
-        return interaction.editReply(
-          `Dry-run ✅ Nothing created.\n\nPlan:\n${planLines.map((l) => `• ${l}`).join("\n")}`
-        );
-      }
+      if (dryrun)
+        return interaction.editReply(`Dry-run ✅\n\nPlan:\n${planLines.map((l) => `• ${l}`).join("\n")}`);
       return interaction.editReply(
         `Done ✅\nCreated: ${createdChannels} channels, ${createdThreads} threads\n` +
         `Reused: ${reusedChannels} channels, ${reusedThreads} threads`
@@ -543,7 +522,6 @@ client.on("interactionCreate", async (interaction) => {
 
     // ---- /teardown ----
     if (interaction.commandName === "teardown") {
-      const categoryId  = process.env.EVENT_CATEGORY_ID;
       const configBase  = interaction.options.getString("config");
       const dryrun      = interaction.options.getBoolean("dryrun") ?? false;
       const deleteState = interaction.options.getBoolean("delete_state") ?? false;
@@ -558,11 +536,8 @@ client.on("interactionCreate", async (interaction) => {
       const toDeleteThreads  = Object.values(state.threads  || {}).map((x) => x.id).filter(Boolean);
       const toDeleteChannels = Object.values(state.channels || {}).map((x) => x.id).filter(Boolean);
 
-      if (dryrun) {
-        return interaction.editReply(
-          `Dry-run ✅ Nothing deleted.\nThreads: ${toDeleteThreads.length}\nChannels: ${toDeleteChannels.length}`
-        );
-      }
+      if (dryrun)
+        return interaction.editReply(`Dry-run ✅\nThreads: ${toDeleteThreads.length}\nChannels: ${toDeleteChannels.length}`);
 
       let deletedThreads = 0, deletedChannels = 0;
       for (const id of toDeleteThreads) {
@@ -589,14 +564,9 @@ client.on("interactionCreate", async (interaction) => {
     console.error("Command error:", err);
     const msg = String(err?.message || err);
     try {
-      if (interaction.deferred || interaction.replied) {
-        await interaction.editReply(`❌ Error: ${msg}`);
-      } else {
-        await interaction.reply({ content: `❌ Error: ${msg}`, ephemeral: true });
-      }
-    } catch (e) {
-      console.error("Failed to reply to interaction:", e);
-    }
+      if (interaction.deferred || interaction.replied) await interaction.editReply(`❌ Error: ${msg}`);
+      else await interaction.reply({ content: `❌ Error: ${msg}`, ephemeral: true });
+    } catch (e) { console.error("Failed to reply to interaction:", e); }
   }
 });
 

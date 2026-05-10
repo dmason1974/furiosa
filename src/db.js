@@ -40,12 +40,26 @@ async function initSchema(isTest = false) {
     CREATE INDEX IF NOT EXISTS idx_players_ingame_name ON players(ingame_name);
 
     CREATE TABLE IF NOT EXISTS matches (
-      match_id   TEXT        PRIMARY KEY,
-      timestamp  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      label      TEXT        NOT NULL
+      match_id      TEXT        PRIMARY KEY,
+      timestamp     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      label         TEXT        NOT NULL,
+      status        TEXT        NOT NULL DEFAULT 'pending',
+      winning_team  INTEGER,
+      walkover      BOOLEAN     NOT NULL DEFAULT FALSE
     );
 
     CREATE INDEX IF NOT EXISTS idx_matches_timestamp ON matches(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_matches_status    ON matches(status);
+
+    CREATE TABLE IF NOT EXISTS match_players (
+      match_id      TEXT    NOT NULL,
+      team          INTEGER NOT NULL,
+      player_id     TEXT    NOT NULL,
+      discord_name  TEXT    NOT NULL,
+      PRIMARY KEY (match_id, player_id),
+      FOREIGN KEY (match_id)  REFERENCES matches(match_id)  ON DELETE CASCADE,
+      FOREIGN KEY (player_id) REFERENCES players(player_id) ON DELETE RESTRICT
+    );
 
     CREATE TABLE IF NOT EXISTS match_results (
       match_id      TEXT    NOT NULL,
@@ -65,6 +79,13 @@ async function initSchema(isTest = false) {
     CREATE INDEX IF NOT EXISTS idx_match_results_player_id ON match_results(player_id);
     CREATE INDEX IF NOT EXISTS idx_match_results_match_id  ON match_results(match_id);
   `);
+
+  // Add new columns to matches if upgrading from old schema
+  await getPool(isTest).query(`
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS status       TEXT    NOT NULL DEFAULT 'pending';
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS winning_team INTEGER;
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS walkover     BOOLEAN NOT NULL DEFAULT FALSE;
+  `);
 }
 
 async function upsertPlayer(playerId, discordName, isTest = false) {
@@ -76,14 +97,6 @@ async function upsertPlayer(playerId, discordName, isTest = false) {
            updated_at   = NOW()`,
     [playerId, discordName]
   );
-}
-
-async function getPlayer(playerId, isTest = false) {
-  const { rows } = await getPool(isTest).query(
-    `SELECT * FROM players WHERE player_id = $1`,
-    [playerId]
-  );
-  return rows[0] || null;
 }
 
 async function getPlayers(playerIds, isTest = false) {
@@ -103,35 +116,34 @@ async function getRatings(isTest = false) {
   return rows;
 }
 
-async function recordMatch(matchId, label, resultRows, isTest = false) {
+// Create a pending match with two teams stored in match_players.
+async function createMatch(team1, team2, isTest = false) {
+  const matchId = `M${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const t1Names = team1.map((p) => p.discordName).join(", ");
+  const t2Names = team2.map((p) => p.discordName).join(", ");
+  const label   = `${t1Names} vs ${t2Names}`;
+
   const client = await getPool(isTest).connect();
   try {
     await client.query("BEGIN");
-
     await client.query(
-      `INSERT INTO matches (match_id, label) VALUES ($1, $2)`,
+      `INSERT INTO matches (match_id, label, status) VALUES ($1, $2, 'pending')`,
       [matchId, label]
     );
-
-    for (const r of resultRows) {
-      // Update player elo + games_played
+    for (const p of team1) {
       await client.query(
-        `UPDATE players
-         SET elo = $1, games_played = $2, updated_at = NOW()
-         WHERE player_id = $3`,
-        [r.eloAfter, r.gamesPlayed, r.playerId]
-      );
-
-      await client.query(
-        `INSERT INTO match_results
-           (match_id, player_id, discord_name, rank, elo_before, elo_after, delta_elo, games_played, k_used)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [matchId, r.playerId, r.discordName, r.rank,
-         r.eloBefore, r.eloAfter, r.deltaElo, r.gamesPlayed, r.kUsed]
+        `INSERT INTO match_players (match_id, team, player_id, discord_name) VALUES ($1, 1, $2, $3)`,
+        [matchId, p.playerId, p.discordName]
       );
     }
-
+    for (const p of team2) {
+      await client.query(
+        `INSERT INTO match_players (match_id, team, player_id, discord_name) VALUES ($1, 2, $2, $3)`,
+        [matchId, p.playerId, p.discordName]
+      );
+    }
     await client.query("COMMIT");
+    return { matchId, label };
   } catch (e) {
     await client.query("ROLLBACK");
     throw e;
@@ -140,4 +152,106 @@ async function recordMatch(matchId, label, resultRows, isTest = false) {
   }
 }
 
-module.exports = { getPool, initSchema, upsertPlayer, getPlayer, getPlayers, getRatings, recordMatch };
+// Return up to 25 pending matches for autocomplete.
+async function getPendingMatches(isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT match_id, label, timestamp
+     FROM matches
+     WHERE status = 'pending'
+     ORDER BY timestamp DESC
+     LIMIT 25`
+  );
+  return rows;
+}
+
+// Fetch a match with its two teams (joining current player Elo).
+async function getMatchWithPlayers(matchId, isTest = false) {
+  const { rows: matchRows } = await getPool(isTest).query(
+    `SELECT * FROM matches WHERE match_id = $1`,
+    [matchId]
+  );
+  if (!matchRows[0]) return null;
+
+  const { rows: playerRows } = await getPool(isTest).query(
+    `SELECT mp.team, mp.player_id, mp.discord_name, p.elo, p.games_played
+     FROM match_players mp
+     JOIN players p ON p.player_id = mp.player_id
+     WHERE mp.match_id = $1
+     ORDER BY mp.team`,
+    [matchId]
+  );
+
+  const toPlayer = (r) => ({
+    playerId:    r.player_id,
+    discordName: r.discord_name,
+    elo:         r.elo,
+    gamesPlayed: r.games_played,
+  });
+
+  return {
+    match: matchRows[0],
+    team1: playerRows.filter((r) => r.team === 1).map(toPlayer),
+    team2: playerRows.filter((r) => r.team === 2).map(toPlayer),
+  };
+}
+
+// Record the result of a pending match.
+// winningTeam: 1 | 2 | null (walkover)
+async function completeMatch(matchId, winningTeam, eloModule, isTest = false) {
+  const data = await getMatchWithPlayers(matchId, isTest);
+  if (!data) throw new Error(`Match ${matchId} not found.`);
+  if (data.match.status !== "pending") throw new Error(`Match is already ${data.match.status}.`);
+
+  const client = await getPool(isTest).connect();
+  try {
+    await client.query("BEGIN");
+
+    let results = [];
+
+    if (winningTeam === null) {
+      await client.query(
+        `UPDATE matches SET status = 'completed', walkover = true WHERE match_id = $1`,
+        [matchId]
+      );
+    } else {
+      const orderedTeams = winningTeam === 1
+        ? [data.team1, data.team2]
+        : [data.team2, data.team1];
+
+      results = eloModule.calculateMatch(orderedTeams);
+
+      await client.query(
+        `UPDATE matches SET status = 'completed', winning_team = $1, walkover = false WHERE match_id = $2`,
+        [winningTeam, matchId]
+      );
+
+      for (const r of results) {
+        await client.query(
+          `UPDATE players SET elo = $1, games_played = $2, updated_at = NOW() WHERE player_id = $3`,
+          [r.eloAfter, r.gamesPlayed, r.playerId]
+        );
+        await client.query(
+          `INSERT INTO match_results
+             (match_id, player_id, discord_name, rank, elo_before, elo_after, delta_elo, games_played, k_used)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [matchId, r.playerId, r.discordName, r.rank,
+           r.eloBefore, r.eloAfter, r.deltaElo, r.gamesPlayed, r.kUsed]
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+    return { results, walkover: winningTeam === null, team1: data.team1, team2: data.team2 };
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = {
+  getPool, initSchema,
+  upsertPlayer, getPlayers, getRatings,
+  createMatch, getPendingMatches, getMatchWithPlayers, completeMatch,
+};
