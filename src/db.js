@@ -87,6 +87,13 @@ async function initSchema(isTest = false) {
 
     CREATE INDEX IF NOT EXISTS idx_match_results_player_id ON match_results(player_id);
     CREATE INDEX IF NOT EXISTS idx_match_results_match_id  ON match_results(match_id);
+
+    CREATE TABLE IF NOT EXISTS lobby (
+      player_id    TEXT PRIMARY KEY,
+      discord_name TEXT NOT NULL,
+      added_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      FOREIGN KEY (player_id) REFERENCES players(player_id) ON DELETE CASCADE
+    );
   `);
 
   // Safe upgrades for existing deployments
@@ -132,6 +139,51 @@ async function getRatings(isTest = false) {
      LIMIT 10`
   );
   return rows;
+}
+
+// ---------------------------
+// Lobby
+// ---------------------------
+async function lobbyAdd(playerId, discordName, isTest = false) {
+  await getPool(isTest).query(
+    `INSERT INTO lobby (player_id, discord_name)
+     VALUES ($1, $2)
+     ON CONFLICT (player_id) DO UPDATE SET discord_name = EXCLUDED.discord_name`,
+    [playerId, discordName]
+  );
+}
+
+async function lobbyRemove(playerId, isTest = false) {
+  const { rowCount } = await getPool(isTest).query(
+    `DELETE FROM lobby WHERE player_id = $1`,
+    [playerId]
+  );
+  return rowCount > 0;
+}
+
+async function lobbyList(isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT l.player_id, l.discord_name, p.elo
+     FROM lobby l
+     JOIN players p ON p.player_id = l.player_id
+     ORDER BY p.elo DESC`
+  );
+  return rows;
+}
+
+async function lobbyClear(isTest = false) {
+  await getPool(isTest).query(`DELETE FROM lobby`);
+}
+
+async function lobbyHasPendingMatches(isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT COUNT(*) AS cnt
+     FROM matches m
+     JOIN match_players mp ON mp.match_id = m.match_id
+     JOIN lobby l          ON l.player_id  = mp.player_id
+     WHERE m.status = 'pending'`
+  );
+  return parseInt(rows[0].cnt, 10) > 0;
 }
 
 // ---------------------------
@@ -358,6 +410,7 @@ async function completeMatch(matchId, winningTeam, eloModule, isTest = false) {
 module.exports = {
   getPool, initSchema,
   upsertPlayer, getPlayers, getRatings,
+  lobbyAdd, lobbyRemove, lobbyList, lobbyClear, lobbyHasPendingMatches,
   createSeason, startSeason, endSeason, getActiveSeason, getSeasonByName, listSeasons, getLeagueTable,
   createMatch, getPendingMatches, getMatchWithPlayers, completeMatch,
 };

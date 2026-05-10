@@ -134,6 +134,28 @@ const teardownCommand = new SlashCommandBuilder()
   .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without deleting anything"))
   .addBooleanOption((o) => o.setName("delete_state").setDescription("Delete state file after teardown"));
 
+const lobbyCommand = new SlashCommandBuilder()
+  .setName("lobby")
+  .setDescription("Manage the matchmaking lobby")
+  .addSubcommand((s) =>
+    s.setName("add").setDescription("Add a player to the lobby")
+      .addUserOption((o) => o.setName("player").setDescription("Player to add").setRequired(true))
+      .addBooleanOption((o) => o.setName("test").setDescription("Use test database"))
+  )
+  .addSubcommand((s) =>
+    s.setName("remove").setDescription("Remove a player from the lobby")
+      .addUserOption((o) => o.setName("player").setDescription("Player to remove").setRequired(true))
+      .addBooleanOption((o) => o.setName("test").setDescription("Use test database"))
+  )
+  .addSubcommand((s) =>
+    s.setName("list").setDescription("Show who is currently in the lobby")
+      .addBooleanOption((o) => o.setName("test").setDescription("Use test database"))
+  )
+  .addSubcommand((s) =>
+    s.setName("clear").setDescription("Clear the lobby")
+      .addBooleanOption((o) => o.setName("test").setDescription("Use test database"))
+  );
+
 const seasonCommand = new SlashCommandBuilder()
   .setName("season")
   .setDescription("Manage seasons")
@@ -163,13 +185,17 @@ const syncMembersCommand = new SlashCommandBuilder()
 
 const createMatchCommand = new SlashCommandBuilder()
   .setName("create_match")
-  .setDescription("Create a pending match between two teams")
-  .addStringOption((o) =>
-    o.setName("team1").setDescription("Team 1 — @mention one or more players").setRequired(true)
-  )
-  .addStringOption((o) =>
-    o.setName("team2").setDescription("Team 2 — @mention one or more players").setRequired(true)
-  )
+  .setDescription("Create a pending match between two teams (up to 5v5; use /matchmake save:True for larger)")
+  .addUserOption((o) => o.setName("team1_p1").setDescription("Team 1 — Player 1").setRequired(true))
+  .addUserOption((o) => o.setName("team2_p1").setDescription("Team 2 — Player 1").setRequired(true))
+  .addUserOption((o) => o.setName("team1_p2").setDescription("Team 1 — Player 2"))
+  .addUserOption((o) => o.setName("team2_p2").setDescription("Team 2 — Player 2"))
+  .addUserOption((o) => o.setName("team1_p3").setDescription("Team 1 — Player 3"))
+  .addUserOption((o) => o.setName("team2_p3").setDescription("Team 2 — Player 3"))
+  .addUserOption((o) => o.setName("team1_p4").setDescription("Team 1 — Player 4"))
+  .addUserOption((o) => o.setName("team2_p4").setDescription("Team 2 — Player 4"))
+  .addUserOption((o) => o.setName("team1_p5").setDescription("Team 1 — Player 5"))
+  .addUserOption((o) => o.setName("team2_p5").setDescription("Team 2 — Player 5"))
   .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
 const recordResultCommand = new SlashCommandBuilder()
@@ -191,6 +217,7 @@ const recordResultCommand = new SlashCommandBuilder()
 const ratingsCommand = new SlashCommandBuilder()
   .setName("ratings")
   .setDescription("Show the current Elo leaderboard")
+  .addBooleanOption((o) => o.setName("save").setDescription("Save the suggested matchup as a pending match"))
   .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
 const leagueCommand = new SlashCommandBuilder()
@@ -201,12 +228,9 @@ const leagueCommand = new SlashCommandBuilder()
 
 const matchmakeCommand = new SlashCommandBuilder()
   .setName("matchmake")
-  .setDescription("Split players into balanced teams")
-  .addStringOption((o) =>
-    o.setName("players").setDescription("@mention all players in the bracket").setRequired(true)
-  )
+  .setDescription("Split lobby players into balanced teams and create pending matches")
   .addIntegerOption((o) =>
-    o.setName("team_size").setDescription("Players per team (default 1)").setMinValue(1)
+    o.setName("team_size").setDescription("Players per team").setRequired(true).setMinValue(1)
   )
   .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
@@ -282,6 +306,7 @@ client.once("ready", async () => {
     setupCommand,
     teardownCommand,
     syncMembersCommand,
+    lobbyCommand,
     seasonCommand,
     createMatchCommand,
     recordResultCommand,
@@ -337,6 +362,44 @@ client.on("interactionCreate", async (interaction) => {
       );
     }
 
+    // ---- /lobby ----
+    if (interaction.commandName === "lobby") {
+      const sub = interaction.options.getSubcommand();
+
+      if (sub === "add") {
+        const user = interaction.options.getUser("player");
+        const dbP  = await db.getPlayers([user.id], isTest);
+        if (!dbP.length)
+          return interaction.editReply(`❌ ${user.displayName} is not in the DB. Run \`/sync_members\` first.`);
+        await db.lobbyAdd(user.id, dbP[0].discord_name, isTest);
+        const lobby = await db.lobbyList(isTest);
+        return interaction.editReply(`✅ **${dbP[0].discord_name}** added to lobby${testLabel(isTest)}. Players in lobby: **${lobby.length}**`);
+      }
+
+      if (sub === "remove") {
+        const user    = interaction.options.getUser("player");
+        const removed = await db.lobbyRemove(user.id, isTest);
+        if (!removed) return interaction.editReply(`❌ That player is not in the lobby.`);
+        const lobby = await db.lobbyList(isTest);
+        return interaction.editReply(`✅ Removed from lobby${testLabel(isTest)}. Players remaining: **${lobby.length}**`);
+      }
+
+      if (sub === "list") {
+        const lobby = await db.lobbyList(isTest);
+        if (lobby.length === 0) return interaction.editReply(`Lobby is empty${testLabel(isTest)}.`);
+        const lines = lobby.map((p, i) => `${i + 1}. ${p.discord_name} — ${Math.round(p.elo)}`);
+        return interaction.editReply(`**Lobby${testLabel(isTest)} (${lobby.length} players)**\n${lines.join("\n")}`);
+      }
+
+      if (sub === "clear") {
+        const hasPending = await db.lobbyHasPendingMatches(isTest);
+        if (hasPending)
+          return interaction.editReply(`⚠️ There are still pending matches involving lobby players. Record all results before clearing.`);
+        await db.lobbyClear(isTest);
+        return interaction.editReply(`✅ Lobby cleared${testLabel(isTest)}.`);
+      }
+    }
+
     // ---- /season ----
     if (interaction.commandName === "season") {
       const sub = interaction.options.getSubcommand();
@@ -376,25 +439,23 @@ client.on("interactionCreate", async (interaction) => {
 
     // ---- /create_match ----
     if (interaction.commandName === "create_match") {
-      const t1Ids = parseMentions(interaction.options.getString("team1"));
-      const t2Ids = parseMentions(interaction.options.getString("team2"));
+      const slots   = [1, 2, 3, 4, 5];
+      const t1Users = slots.map((n) => interaction.options.getUser(`team1_p${n}`)).filter(Boolean);
+      const t2Users = slots.map((n) => interaction.options.getUser(`team2_p${n}`)).filter(Boolean);
 
-      if (t1Ids.length === 0 || t2Ids.length === 0)
-        return interaction.editReply("❌ Each team must have at least one @mention.");
-
-      const overlap = t1Ids.filter((id) => t2Ids.includes(id));
+      const overlap = t1Users.filter((u) => t2Users.some((v) => v.id === u.id));
       if (overlap.length > 0)
-        return interaction.editReply(`❌ A player cannot be in both teams: ${overlap.map((id) => `<@${id}>`).join(", ")}`);
+        return interaction.editReply(`❌ A player cannot be in both teams: ${overlap.map((u) => u.displayName).join(", ")}`);
 
-      const allIds    = [...t1Ids, ...t2Ids];
+      const allIds    = [...t1Users, ...t2Users].map((u) => u.id);
       const dbPlayers = await db.getPlayers(allIds, isTest);
       const byId      = Object.fromEntries(dbPlayers.map((p) => [p.player_id, p]));
       const missing   = allIds.filter((id) => !byId[id]);
       if (missing.length > 0)
         return interaction.editReply(`❌ Not in DB (run /sync_members first): ${missing.map((id) => `<@${id}>`).join(", ")}`);
 
-      const toPlayer = (id) => ({ playerId: id, discordName: byId[id].discord_name });
-      const { matchId, label } = await db.createMatch(t1Ids.map(toPlayer), t2Ids.map(toPlayer), isTest);
+      const toPlayer  = (u) => ({ playerId: u.id, discordName: byId[u.id].discord_name });
+      const { label, seasonName } = await db.createMatch(t1Users.map(toPlayer), t2Users.map(toPlayer), isTest);
 
       const seasonStr = seasonName ? ` | Season: **${seasonName}**` : " | ⚠️ No active season";
       return interaction.editReply(
@@ -483,29 +544,65 @@ client.on("interactionCreate", async (interaction) => {
 
     // ---- /matchmake ----
     if (interaction.commandName === "matchmake") {
-      const playerStr = interaction.options.getString("players");
-      const teamSize  = interaction.options.getInteger("team_size") ?? 1;
-      const ids       = parseMentions(playerStr);
+      const teamSize = interaction.options.getInteger("team_size");
+      const lobby    = await db.lobbyList(isTest);
 
-      if (ids.length < 2) return interaction.editReply("❌ Mention at least 2 players.");
+      if (lobby.length < 2)
+        return interaction.editReply(`❌ Lobby has ${lobby.length} player(s). Add at least 2 with \`/lobby add\`.`);
 
-      const dbPlayers = await db.getPlayers(ids, isTest);
-      const byId      = Object.fromEntries(dbPlayers.map((p) => [p.player_id, p]));
-      const missing   = ids.filter((id) => !byId[id]);
-      if (missing.length > 0)
-        return interaction.editReply(`❌ Not in DB (run /sync_members first): ${missing.map((id) => `<@${id}>`).join(", ")}`);
+      const totalSlots = Math.floor(lobby.length / teamSize) * teamSize;
+      const leftover   = lobby.length - totalSlots;
+      const numMatches = totalSlots / (teamSize * 2);
 
-      const players  = ids.map((id) => ({ playerId: id, discordName: byId[id].discord_name, elo: byId[id].elo }));
-      const numTeams = Math.floor(players.length / teamSize);
-      const { teams, quality } = elo.bestSplit(players, Array(numTeams).fill(teamSize));
+      if (numMatches < 1)
+        return interaction.editReply(`❌ Not enough players for a single match. Need at least ${teamSize * 2}, have ${lobby.length}.`);
 
-      const lines = teams.map((team, i) => {
-        const avg   = Math.round(team.reduce((s, p) => s + p.elo, 0) / team.length);
-        const names = team.map((p) => `<@${p.playerId}>`).join(" ");
-        return `**Team ${i + 1}** (avg ${avg}): ${names}`;
-      });
-      const qualityStr = quality !== null ? `\nMatch quality: ${(quality * 100).toFixed(1)}%` : "";
-      return interaction.editReply(lines.join("\n") + qualityStr + `\n\nUse \`/create_match\` to save this matchup.`);
+      const players = lobby.map((p) => ({
+        playerId:    p.player_id,
+        discordName: p.discord_name,
+        elo:         parseFloat(p.elo),
+      }));
+
+      // Generate all matches: shuffle into best splits pair-by-pair
+      const season    = await db.getActiveSeason(isTest);
+      const seasonStr = season ? ` | Season: **${season.name}**` : " | ⚠️ No active season";
+      const toPlayer  = (p) => ({ playerId: p.playerId, discordName: p.discordName });
+
+      // Sort by Elo desc, snake-draft into matches
+      const sorted  = [...players].sort((a, b) => b.elo - a.elo);
+      const matches = Array.from({ length: numMatches }, () => ({ t1: [], t2: [] }));
+
+      // Distribute players snake-style across matches
+      let mi = 0, dir = 1;
+      for (let i = 0; i < sorted.length; i++) {
+        const p = sorted[i];
+        const m = matches[mi];
+        if (m.t1.length <= m.t2.length) m.t1.push(p);
+        else m.t2.push(p);
+        mi += dir;
+        if (mi >= numMatches) { mi = numMatches - 1; dir = -1; }
+        else if (mi < 0)      { mi = 0;               dir =  1; }
+      }
+
+      const lines = [];
+      for (let i = 0; i < matches.length; i++) {
+        const { t1, t2 } = matches[i];
+        const avg1 = Math.round(t1.reduce((s, p) => s + p.elo, 0) / t1.length);
+        const avg2 = Math.round(t2.reduce((s, p) => s + p.elo, 0) / t2.length);
+        const { matchId, label } = await db.createMatch(t1.map(toPlayer), t2.map(toPlayer), isTest);
+        lines.push(`**Match ${i + 1}** — ${label}\nTeam 1 avg: ${avg1} | Team 2 avg: ${avg2}`);
+      }
+
+      const leftoverMsg = leftover > 0
+        ? `\n\n⚠️ ${leftover} player(s) left out due to uneven numbers: ${sorted.slice(totalSlots).map((p) => p.discordName).join(", ")}`
+        : "";
+
+      return interaction.editReply(
+        `✅ **${numMatches} match(es) created**${testLabel(isTest)}${seasonStr}\n\n` +
+        lines.join("\n\n") +
+        leftoverMsg +
+        `\n\nUse \`/record_result\` to record each result. Clear lobby with \`/lobby clear\` when all done.`
+      );
     }
 
     // ---- /setup ----
