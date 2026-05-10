@@ -50,7 +50,7 @@ function calculateMatch(teams) {
     const avgK = team.reduce((s, p) => s + getK(p.gamesPlayed), 0) / team.length;
     const score = positionScore(rank, teams.length);
     const exp   = expectedScore(i, teamElos);
-    const teamDelta = avgK * (score - exp);
+    const teamDelta = avgK * team.length * (score - exp);
     const share = teamDelta / team.length;
 
     for (const player of team) {
