@@ -49,7 +49,6 @@ async function initSchema(isTest = false) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_matches_timestamp ON matches(timestamp);
-    CREATE INDEX IF NOT EXISTS idx_matches_status    ON matches(status);
 
     CREATE TABLE IF NOT EXISTS match_players (
       match_id      TEXT    NOT NULL,
@@ -85,6 +84,8 @@ async function initSchema(isTest = false) {
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS status       TEXT    NOT NULL DEFAULT 'pending';
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS winning_team INTEGER;
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS walkover     BOOLEAN NOT NULL DEFAULT FALSE;
+
+    CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
   `);
 }
 
