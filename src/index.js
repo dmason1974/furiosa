@@ -524,22 +524,16 @@ client.on("interactionCreate", async (interaction) => {
       if (rows.length === 0)
         return interaction.editReply(`No matches recorded for season **${season.name}** yet.`);
 
-      const header = `**League Table — ${season.name}${testLabel(isTest)}**\n` +
-                     `${"─".repeat(36)}\n` +
-                     `# Player              W  L  GP  ±Elo\n` +
-                     `${"─".repeat(36)}\n`;
-
-      const lines = rows.map((r, i) => {
-        const pos  = String(i + 1).padStart(2);
-        const name = r.discord_name.padEnd(20).slice(0, 20);
-        const w    = String(r.wins).padStart(2);
-        const l    = String(r.losses).padStart(2);
-        const gp   = String(r.games_played).padStart(3);
-        const d    = (r.elo_delta >= 0 ? "+" : "") + r.elo_delta;
-        return `${pos} ${name} ${w} ${l} ${gp}  ${d}`;
+      const medals = ["🥇", "🥈", "🥉"];
+      const lines  = rows.map((r, i) => {
+        const pos   = medals[i] || `${i + 1}.`;
+        const delta = (r.elo_delta >= 0 ? "+" : "") + r.elo_delta;
+        return `${pos} **${r.discord_name}**  W ${r.wins}  L ${r.losses}  GP ${r.games_played}  ${delta}`;
       });
 
-      return interaction.editReply(`${header}\`\`\`\n${lines.join("\n")}\n\`\`\``);
+      return interaction.editReply(
+        `**League Table — ${season.name}${testLabel(isTest)}**\n\n${lines.join("\n")}`
+      );
     }
 
     // ---- /matchmake ----
