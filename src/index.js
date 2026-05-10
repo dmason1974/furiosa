@@ -1,6 +1,8 @@
+"use strict";
+
 require("dotenv").config();
 
-const fs = require("fs");
+const fs   = require("fs");
 const path = require("path");
 const yaml = require("js-yaml");
 
@@ -11,6 +13,9 @@ const {
   ChannelType,
   PermissionsBitField,
 } = require("discord.js");
+
+const db  = require("./db");
+const elo = require("./elo");
 
 // ---------------------------
 // Helpers
@@ -28,8 +33,7 @@ function slugify(s) {
 }
 
 function readYaml(filePath) {
-  const raw = fs.readFileSync(filePath, "utf8");
-  return yaml.load(raw);
+  return yaml.load(fs.readFileSync(filePath, "utf8"));
 }
 
 function readText(filePath) {
@@ -51,7 +55,6 @@ function saveState(statePath, state) {
 }
 
 function renderTemplate(template, vars) {
-  // Simple {{KEY}} replacement
   let out = template;
   for (const [k, v] of Object.entries(vars)) {
     out = out.replaceAll(`{{${k}}}`, v ?? "");
@@ -63,57 +66,50 @@ function mentionList(userIds) {
   return (userIds || []).map((id) => `<@${id}>`).join(" ");
 }
 
-// Validate YAML structure so we fail fast with helpful messages
+// Extract Discord user IDs from a string containing <@id> or <@!id> mentions.
+function parseMentions(str) {
+  return [...str.matchAll(/<@!?(\d+)>/g)].map((m) => m[1]);
+}
+
 function validateConfig(cfg) {
   const errs = [];
-
   if (!cfg || typeof cfg !== "object") errs.push("Config is empty or invalid YAML.");
-
-  if (!cfg.event?.key) errs.push("Missing event.key");
-  if (!cfg.event?.name) errs.push("Missing event.name");
-  if (!Number.isInteger(cfg.event?.round)) errs.push("event.round must be an integer");
+  if (!cfg.event?.key)   errs.push("Missing event.key");
+  if (!cfg.event?.name)  errs.push("Missing event.name");
+  if (!Number.isInteger(cfg.event?.round))    errs.push("event.round must be an integer");
   if (!Number.isInteger(cfg.event?.teamSize)) errs.push("event.teamSize must be an integer");
-
-  if (!cfg.countryPools || typeof cfg.countryPools !== "object") {
-    errs.push("Missing countryPools object");
-  }
-
+  if (!cfg.countryPools || typeof cfg.countryPools !== "object") errs.push("Missing countryPools object");
   if (!Array.isArray(cfg.maps) || cfg.maps.length < 1) {
     errs.push("maps must be a non-empty array");
   } else {
     for (const m of cfg.maps) {
       if (!Number.isInteger(m.mapNumber)) errs.push("Each map must have mapNumber (integer)");
-
       if (!Array.isArray(m.theatres) || m.theatres.length < 1) {
         errs.push(`Map ${m.mapNumber}: theatres must be a non-empty array`);
         continue;
       }
-
       for (const th of m.theatres) {
-        if (!th.id) errs.push(`Map ${m.mapNumber}: theatre missing id`);
+        if (!th.id)   errs.push(`Map ${m.mapNumber}: theatre missing id`);
         if (!th.name) errs.push(`Map ${m.mapNumber}: theatre missing name`);
         if (!Array.isArray(th.teams) || th.teams.length !== 2) {
           errs.push(`Map ${m.mapNumber} theatre ${th.id}: must have exactly 2 teams`);
           continue;
         }
-
         for (const team of th.teams) {
-          if (!team.teamName) errs.push(`Map ${m.mapNumber} theatre ${th.id}: team missing teamName`);
+          if (!team.teamName)    errs.push(`Map ${m.mapNumber} theatre ${th.id}: team missing teamName`);
           if (!team.countryPool) errs.push(`Map ${m.mapNumber} theatre ${th.id}: team missing countryPool`);
           if (!Array.isArray(team.players)) errs.push(`Map ${m.mapNumber} theatre ${th.id}: team.players must be array`);
           if (team.subs != null && !Array.isArray(team.subs)) {
             errs.push(`Map ${m.mapNumber} theatre ${th.id}: team.subs must be array when provided`);
           }
-
           if (team.countryPool && cfg.countryPools && !cfg.countryPools[team.countryPool]) {
             errs.push(`Map ${m.mapNumber} theatre ${th.id}: unknown countryPool "${team.countryPool}"`);
           }
-
-          // Optional: warn if too many players listed (you can choose to hard fail instead)
           if (Array.isArray(team.players) && Number.isInteger(cfg.event?.teamSize)) {
             if (team.players.length > cfg.event.teamSize) {
               errs.push(
-                `Map ${m.mapNumber} theatre ${th.id} (${team.teamName}/${team.countryPool}): has ${team.players.length} players but teamSize is ${cfg.event.teamSize}`
+                `Map ${m.mapNumber} theatre ${th.id} (${team.teamName}/${team.countryPool}): ` +
+                `has ${team.players.length} players but teamSize is ${cfg.event.teamSize}`
               );
             }
           }
@@ -121,99 +117,7 @@ function validateConfig(cfg) {
       }
     }
   }
-
   return errs;
-}
-
-// ---------------------------
-// DB helpers
-// ---------------------------
-async function openDb() {
-  let sqlite3;
-  let open;
-
-  try {
-    sqlite3 = require("sqlite3");
-    ({ open } = require("sqlite"));
-  } catch (err) {
-    throw new Error(
-      "SQLite support is unavailable on this host. Install compatible sqlite/sqlite3 packages before using /sync_members."
-    );
-  }
-
-  const dbPath = process.env.ELO_DB_PATH || path.join(process.cwd(), "local-db", "elo.sqlite3");
-  ensureDir(path.dirname(dbPath));
-
-  const db = await open({
-    filename: dbPath,
-    driver: sqlite3.Database,
-  });
-
-  // SQLite pragmas are per-connection
-  await db.exec("PRAGMA foreign_keys = ON;");
-  await db.exec("PRAGMA journal_mode = WAL;");
-
-  return db;
-}
-
-async function ensurePlayersTable(db) {
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS players (
-      player_id     TEXT PRIMARY KEY,                 -- Discord user.id
-      discord_name  TEXT NOT NULL,
-      ingame_name   TEXT NOT NULL,
-      elo           INTEGER NOT NULL DEFAULT 1000,
-      games_played  INTEGER NOT NULL DEFAULT 0,
-      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_players_ingame_name ON players(ingame_name);
-  `);
-}
-
-function pickDiscordName(member) {
-  return member.displayName || member.user.username;
-}
-
-async function syncGuildMembersToPlayers(guild, db) {
-  const members = await guild.members.fetch();
-
-  const upsertSql = `
-    INSERT INTO players (player_id, discord_name, ingame_name)
-    VALUES (?, ?, ?)
-    ON CONFLICT(player_id) DO UPDATE SET
-      discord_name = excluded.discord_name,
-      updated_at = datetime('now')
-  `;
-
-  let humans = 0;
-  let bots = 0;
-
-  await db.exec("BEGIN IMMEDIATE;");
-  try {
-    for (const [, member] of members) {
-      if (member.user.bot) {
-        bots++;
-        continue;
-      }
-
-      const playerId = member.id;
-      const discordName = pickDiscordName(member);
-
-      // IGN unknown at this stage; keep empty string; do NOT overwrite on conflict.
-      await db.run(upsertSql, [playerId, discordName, ""]);
-
-      humans++;
-    }
-
-    await db.exec("COMMIT;");
-  } catch (e) {
-    await db.exec("ROLLBACK;");
-    throw e;
-  }
-
-  return { total: members.size, humans, bots };
 }
 
 // ---------------------------
@@ -223,71 +127,70 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
 });
 
+// ---------------------------
 // Slash commands
+// ---------------------------
 const setupCommand = new SlashCommandBuilder()
   .setName("setup")
   .setDescription("Create map channels and private team threads from YAML config")
   .addStringOption((o) =>
-    o
-      .setName("config")
-      .setDescription("Config file base name in src/config (without extension), e.g. bt-r1-flagship")
-      .setRequired(true)
+    o.setName("config").setDescription("Config file base name in src/config (without extension)").setRequired(true)
   )
   .addBooleanOption((o) =>
-    o.setName("dryrun").setDescription("If true, prints what would be created without creating anything")
+    o.setName("dryrun").setDescription("Print plan without creating anything")
   );
 
 const teardownCommand = new SlashCommandBuilder()
   .setName("teardown")
-  .setDescription("Delete channels/threads created by /setup using the saved state file")
+  .setDescription("Delete channels/threads created by /setup")
   .addStringOption((o) =>
-    o
-      .setName("config")
-      .setDescription("Config file base name in src/config (without extension), e.g. bt-r1-flagship")
-      .setRequired(true)
+    o.setName("config").setDescription("Config file base name in src/config (without extension)").setRequired(true)
   )
-  .addBooleanOption((o) =>
-    o.setName("dryrun").setDescription("If true, prints what would be deleted without deleting anything")
-  )
-  .addBooleanOption((o) =>
-    o
-      .setName("delete_state")
-      .setDescription("If true, deletes the state file after teardown completes")
-  );
+  .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without deleting anything"))
+  .addBooleanOption((o) => o.setName("delete_state").setDescription("Delete state file after teardown"));
 
 const syncMembersCommand = new SlashCommandBuilder()
   .setName("sync_members")
-  .setDescription("Sync all non-bot guild members into the Elo DB (players table)");
+  .setDescription("Sync all non-bot guild members into the Elo players table");
 
-client.once("ready", async () => {
-  console.log(`Logged in as ${client.user.tag}`);
+const recordMatchCommand = new SlashCommandBuilder()
+  .setName("record_match")
+  .setDescription("Record a match result and update Elo ratings")
+  .addStringOption((o) =>
+    o.setName("rank1").setDescription("1st place — @mention one or more players").setRequired(true)
+  )
+  .addStringOption((o) =>
+    o.setName("rank2").setDescription("2nd place — @mention one or more players").setRequired(true)
+  )
+  .addStringOption((o) => o.setName("rank3").setDescription("3rd place — @mention one or more players"))
+  .addStringOption((o) => o.setName("rank4").setDescription("4th place — @mention one or more players"));
 
-  const guildId = process.env.GUILD_ID;
-  if (!guildId) throw new Error("Missing GUILD_ID in .env");
+const ratingsCommand = new SlashCommandBuilder()
+  .setName("ratings")
+  .setDescription("Show the current Elo leaderboard");
 
-  const guild = await client.guilds.fetch(guildId);
+const matchmakeCommand = new SlashCommandBuilder()
+  .setName("matchmake")
+  .setDescription("Split players into balanced teams")
+  .addStringOption((o) =>
+    o.setName("players").setDescription("@mention all players in the bracket").setRequired(true)
+  )
+  .addIntegerOption((o) =>
+    o.setName("team_size").setDescription("Players per team (default 1)").setMinValue(1)
+  );
 
-  // Register commands in this guild
-  await guild.commands.create(setupCommand);
-  await guild.commands.create(teardownCommand);
-  await guild.commands.create(syncMembersCommand);
-
-  console.log("Registered /setup, /teardown and /sync_members commands");
-});
-
+// ---------------------------
 // Permission check: staff only
+// ---------------------------
 function isStaff(interaction) {
   const staffRoleId = process.env.EVENT_STAFF_ROLE_ID;
   if (!staffRoleId) return false;
   return interaction.member?.roles?.cache?.has(staffRoleId);
 }
 
-// Ensure bot can see/use the category and create channels/threads
 async function assertBotAccess(guild, categoryId) {
   const category = await guild.channels.fetch(categoryId);
   if (!category) throw new Error(`EVENT_CATEGORY_ID not found: ${categoryId}`);
-
-  // Check bot permissions on the category
   const botMember = await guild.members.fetchMe();
   const requiredPerms = [
     PermissionsBitField.Flags.CreatePublicThreads,
@@ -295,44 +198,28 @@ async function assertBotAccess(guild, categoryId) {
     PermissionsBitField.Flags.ManageChannels,
     PermissionsBitField.Flags.SendMessages,
   ];
-
-  const botPerms = category.permissionsFor(botMember);
-  const missingPerms = [];
-
-  for (const perm of requiredPerms) {
-    if (!botPerms.has(perm)) {
-      missingPerms.push(PermissionsBitField.resolve(perm).toString());
-    }
-  }
-
+  const botPerms    = category.permissionsFor(botMember);
+  const missingPerms = requiredPerms
+    .filter((p) => !botPerms.has(p))
+    .map((p) => PermissionsBitField.resolve(p).toString());
   if (missingPerms.length > 0) {
-    throw new Error(
-      `Bot missing permissions on category: ${missingPerms.join(", ")}. ` +
-        `Please grant these permissions and try again.`
-    );
+    throw new Error(`Bot missing permissions on category: ${missingPerms.join(", ")}`);
   }
-
   return category;
 }
 
-// Add members to private thread, best-effort
 async function addPlayersToThread(guild, thread, playerIds) {
   for (const userId of playerIds || []) {
     try {
-      // Ensure the member exists in guild cache/api
       let member = guild.members.cache.get(userId);
       if (!member) member = await guild.members.fetch(userId);
-
-      // Private thread membership add
       await thread.members.add(member.id);
     } catch (e) {
-      const msg = String(e?.message || e);
-      console.log(`Failed to add ${userId} to ${thread.name}: ${msg}`);
+      console.log(`Failed to add ${userId} to ${thread.name}: ${String(e?.message || e)}`);
     }
   }
 }
 
-// Find channel by name under a category (idempotency)
 async function findChannelByNameInCategory(guild, categoryId, channelName) {
   const channels = await guild.channels.fetch();
   return channels.find(
@@ -340,22 +227,41 @@ async function findChannelByNameInCategory(guild, categoryId, channelName) {
   );
 }
 
-// Find thread by name inside a channel (idempotency)
 async function findThreadByName(mapChannel, threadName) {
-  // Fetch active threads
   const active = await mapChannel.threads.fetchActive();
   const foundActive = active.threads.find((t) => t.name === threadName);
   if (foundActive) return foundActive;
-
-  // Also check archived threads (private threads can be archived)
   const archived = await mapChannel.threads.fetchArchived({ type: "private" }).catch(() => null);
   if (archived?.threads) {
     const foundArchived = archived.threads.find((t) => t.name === threadName);
     if (foundArchived) return foundArchived;
   }
-
   return null;
 }
+
+// ---------------------------
+// Bot ready
+// ---------------------------
+client.once("ready", async () => {
+  console.log(`Logged in as ${client.user.tag}`);
+
+  const guildId = process.env.GUILD_ID;
+  if (!guildId) throw new Error("Missing GUILD_ID in .env");
+
+  await db.initSchema();
+  console.log("DB schema ready");
+
+  const guild = await client.guilds.fetch(guildId);
+  await guild.commands.set([
+    setupCommand,
+    teardownCommand,
+    syncMembersCommand,
+    recordMatchCommand,
+    ratingsCommand,
+    matchmakeCommand,
+  ]);
+  console.log("Registered slash commands");
+});
 
 // ---------------------------
 // Interaction handler
@@ -364,7 +270,6 @@ client.on("interactionCreate", async (interaction) => {
   try {
     if (!interaction.isChatInputCommand()) return;
 
-    // Staff only
     if (!isStaff(interaction)) {
       return interaction.reply({ content: "Staff only.", ephemeral: true });
     }
@@ -372,83 +277,176 @@ client.on("interactionCreate", async (interaction) => {
     const guild = interaction.guild;
     if (!guild) throw new Error("This command must be run inside a server.");
 
-    // Acknowledge immediately so config reads, validation, and Discord API work
-    // do not trip the 3-second interaction timeout.
     await interaction.deferReply({ ephemeral: true });
 
+    // ---- /sync_members ----
     if (interaction.commandName === "sync_members") {
-      const db = await openDb();
-      try {
-        await ensurePlayersTable(db);
-        const res = await syncGuildMembersToPlayers(guild, db);
-
-        return interaction.editReply(
-          `✅ Synced players.\nTotal fetched: ${res.total}\nHumans inserted/updated: ${res.humans}\nBots skipped: ${res.bots}`
-        );
-      } finally {
-        await db.close();
+      const members = await guild.members.fetch();
+      let humans = 0, bots = 0;
+      for (const [, member] of members) {
+        if (member.user.bot) { bots++; continue; }
+        await db.upsertPlayer(member.id, member.displayName || member.user.username);
+        humans++;
       }
+      return interaction.editReply(
+        `✅ Synced players.\nTotal: ${members.size} | Humans: ${humans} | Bots skipped: ${bots}`
+      );
     }
 
-    const categoryId = process.env.EVENT_CATEGORY_ID;
-    if (!categoryId) throw new Error("Missing EVENT_CATEGORY_ID in .env");
+    // ---- /record_match ----
+    if (interaction.commandName === "record_match") {
+      const rankInputs = [
+        interaction.options.getString("rank1"),
+        interaction.options.getString("rank2"),
+        interaction.options.getString("rank3"),
+        interaction.options.getString("rank4"),
+      ].filter(Boolean);
 
-    const configBase = interaction.options.getString("config");
-    const dryrun = interaction.options.getBoolean("dryrun") ?? false;
+      // Parse mentions per rank slot
+      const rankGroups = rankInputs.map(parseMentions);
+      if (rankGroups.some((g) => g.length === 0)) {
+        return interaction.editReply("❌ Each rank must contain at least one @mention.");
+      }
 
-    const configPath = path.join(__dirname, "config", `${configBase}.yml`);
-    const templatePath = path.join(__dirname, "config", `${configBase}.thread.md`);
+      // Flatten all player IDs and fetch from DB
+      const allIds    = rankGroups.flat();
+      const dbPlayers = await db.getPlayers(allIds);
+      const byId      = Object.fromEntries(dbPlayers.map((p) => [p.player_id, p]));
 
-    if (!fs.existsSync(configPath)) {
-      return interaction.editReply(`Config not found: ${configPath}`);
+      const missing = allIds.filter((id) => !byId[id]);
+      if (missing.length > 0) {
+        return interaction.editReply(
+          `❌ These players are not in the DB (run /sync_members first): ${missing.map((id) => `<@${id}>`).join(", ")}`
+        );
+      }
+
+      // Build teams array for elo.calculateMatch
+      const teams = rankGroups.map((ids) =>
+        ids.map((id) => ({
+          playerId:    byId[id].player_id,
+          discordName: byId[id].discord_name,
+          elo:         byId[id].elo,
+          gamesPlayed: byId[id].games_played,
+        }))
+      );
+
+      const results  = elo.calculateMatch(teams);
+      const matchId  = `M${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const label    = rankGroups.map((ids, i) => `Rank${i + 1}: ${ids.map((id) => byId[id].discord_name).join(", ")}`).join(" | ");
+
+      await db.recordMatch(matchId, label, results);
+
+      const lines = results.map(
+        (r) => `<@${r.playerId}> (rank ${r.rank}): ${r.eloBefore} → **${r.eloAfter}** (${r.deltaElo >= 0 ? "+" : ""}${r.deltaElo})`
+      );
+      return interaction.editReply(`✅ Match recorded.\n${lines.join("\n")}`);
     }
-    if (!fs.existsSync(templatePath)) {
-      return interaction.editReply(`Thread template not found: ${templatePath}`);
+
+    // ---- /ratings ----
+    if (interaction.commandName === "ratings") {
+      const rows = await db.getRatings();
+      if (rows.length === 0) {
+        return interaction.editReply("No players in the DB yet. Run /sync_members first.");
+      }
+      const lines = rows.map(
+        (r, i) => `${i + 1}. <@${r.player_id}> — **${Math.round(r.elo)}** (${r.games_played} games)`
+      );
+      const chunks = [];
+      let chunk = "**Elo Leaderboard**\n";
+      for (const line of lines) {
+        if (chunk.length + line.length > 1900) {
+          chunks.push(chunk);
+          chunk = "";
+        }
+        chunk += line + "\n";
+      }
+      chunks.push(chunk);
+      await interaction.editReply(chunks[0]);
+      for (const c of chunks.slice(1)) {
+        await interaction.followUp({ content: c, ephemeral: true });
+      }
+      return;
     }
 
-    const cfg = readYaml(configPath);
-    const template = readText(templatePath);
+    // ---- /matchmake ----
+    if (interaction.commandName === "matchmake") {
+      const playerStr = interaction.options.getString("players");
+      const teamSize  = interaction.options.getInteger("team_size") ?? 1;
+      const ids       = parseMentions(playerStr);
 
-    const errors = validateConfig(cfg);
-    if (errors.length) {
-      return interaction.editReply(`Config validation failed:\n- ${errors.join("\n- ")}`);
+      if (ids.length < 2) {
+        return interaction.editReply("❌ Mention at least 2 players.");
+      }
+
+      const dbPlayers = await db.getPlayers(ids);
+      const byId      = Object.fromEntries(dbPlayers.map((p) => [p.player_id, p]));
+      const missing   = ids.filter((id) => !byId[id]);
+      if (missing.length > 0) {
+        return interaction.editReply(
+          `❌ Not in DB (run /sync_members first): ${missing.map((id) => `<@${id}>`).join(", ")}`
+        );
+      }
+
+      const players  = ids.map((id) => ({
+        playerId:    byId[id].player_id,
+        discordName: byId[id].discord_name,
+        elo:         byId[id].elo,
+      }));
+
+      const numTeams  = Math.floor(players.length / teamSize);
+      const teamSizes = Array(numTeams).fill(teamSize);
+      const { teams, quality } = elo.bestSplit(players, teamSizes);
+
+      const lines = teams.map((team, i) => {
+        const avg  = Math.round(team.reduce((s, p) => s + p.elo, 0) / team.length);
+        const names = team.map((p) => `<@${p.playerId}>`).join(" ");
+        return `**Team ${i + 1}** (avg ${avg}): ${names}`;
+      });
+
+      const qualityStr = quality !== null ? `\nMatch quality: ${(quality * 100).toFixed(1)}%` : "";
+      return interaction.editReply(lines.join("\n") + qualityStr);
     }
 
-    // State file is keyed to event.key so you can re-run safely
-    const statePath = path.join(process.cwd(), "data", `state-${cfg.event.key}.json`);
-    const state = loadState(statePath);
-
+    // ---- /setup ----
     if (interaction.commandName === "setup") {
+      const categoryId = process.env.EVENT_CATEGORY_ID;
+      if (!categoryId) throw new Error("Missing EVENT_CATEGORY_ID in .env");
+
+      const configBase  = interaction.options.getString("config");
+      const dryrun      = interaction.options.getBoolean("dryrun") ?? false;
+      const configPath  = path.join(__dirname, "config", `${configBase}.yml`);
+      const templatePath = path.join(__dirname, "config", `${configBase}.thread.md`);
+
+      if (!fs.existsSync(configPath))   return interaction.editReply(`Config not found: ${configPath}`);
+      if (!fs.existsSync(templatePath)) return interaction.editReply(`Thread template not found: ${templatePath}`);
+
+      const cfg      = readYaml(configPath);
+      const template = readText(templatePath);
+      const errors   = validateConfig(cfg);
+      if (errors.length) return interaction.editReply(`Config validation failed:\n- ${errors.join("\n- ")}`);
+
+      const statePath = path.join(process.cwd(), "data", `state-${cfg.event.key}.json`);
+      const state     = loadState(statePath);
+
       await assertBotAccess(guild, categoryId);
 
       const planLines = [];
-      let createdChannels = 0;
-      let createdThreads = 0;
-      let reusedChannels = 0;
-      let reusedThreads = 0;
+      let createdChannels = 0, createdThreads = 0, reusedChannels = 0, reusedThreads = 0;
 
       for (const map of cfg.maps) {
-        const channelName = `${slugify(cfg.event.key)}-map${pad2(map.mapNumber)}`; // bt-r1-flagship-map01
-
+        const channelName = `${slugify(cfg.event.key)}-map${pad2(map.mapNumber)}`;
         planLines.push(`Map ${map.mapNumber}: channel #${channelName}`);
 
-        // Idempotency: prefer state, else search by name under category
         let mapChannelId = state.channels?.[channelName]?.id;
-        let mapChannel = mapChannelId ? await guild.channels.fetch(mapChannelId).catch(() => null) : null;
-
-        if (!mapChannel) {
-          mapChannel = await findChannelByNameInCategory(guild, categoryId, channelName);
-        }
+        let mapChannel   = mapChannelId ? await guild.channels.fetch(mapChannelId).catch(() => null) : null;
+        if (!mapChannel) mapChannel = await findChannelByNameInCategory(guild, categoryId, channelName);
 
         if (!mapChannel) {
           if (dryrun) {
             planLines.push(`  - would create channel`);
           } else {
             mapChannel = await guild.channels.create({
-              name: channelName,
-              type: ChannelType.GuildText,
-              parent: categoryId,
-              reason: "Event setup",
+              name: channelName, type: ChannelType.GuildText, parent: categoryId, reason: "Event setup",
             });
             createdChannels++;
             state.channels[channelName] = { id: mapChannel.id };
@@ -458,37 +456,26 @@ client.on("interactionCreate", async (interaction) => {
           state.channels[channelName] = { id: mapChannel.id };
         }
 
-        // For each theatre, create 2 threads (teams)
         for (const theatre of map.theatres) {
           for (const team of theatre.teams) {
-            const poolKey = team.countryPool;
-            const pool = cfg.countryPools[poolKey];
-
-            const threadName = `${slugify(team.teamName)}-${slugify(poolKey)}`; // <team-name>-<zone>
+            const poolKey    = team.countryPool;
+            const pool       = cfg.countryPools[poolKey];
+            const threadName = `${slugify(team.teamName)}-${slugify(poolKey)}`;
             planLines.push(`  - theatre ${theatre.id}: would ensure private thread "${threadName}"`);
 
-            if (!mapChannel) continue; // dryrun before creation
+            if (!mapChannel) continue;
 
             let threadId = state.threads?.[`${channelName}:${threadName}`]?.id;
-            let thread = threadId ? await guild.channels.fetch(threadId).catch(() => null) : null;
+            let thread   = threadId ? await guild.channels.fetch(threadId).catch(() => null) : null;
+            if (!thread) thread = await findThreadByName(mapChannel, threadName);
 
             if (!thread) {
-              // Try to find existing thread by name
-              thread = await findThreadByName(mapChannel, threadName);
-            }
-
-            if (!thread) {
-              if (dryrun) {
-                // no-op
-              } else {
+              if (!dryrun) {
                 thread = await mapChannel.threads.create({
-                  name: threadName,
-                  type: ChannelType.PrivateThread,
-                  autoArchiveDuration: 10080,
-                  reason: "Event setup",
+                  name: threadName, type: ChannelType.PrivateThread,
+                  autoArchiveDuration: 10080, reason: "Event setup",
                 });
                 createdThreads++;
-
                 state.threads[`${channelName}:${threadName}`] = { id: thread.id };
               }
             } else {
@@ -496,52 +483,34 @@ client.on("interactionCreate", async (interaction) => {
               state.threads[`${channelName}:${threadName}`] = { id: thread.id };
             }
 
-            // Post the thread message (only once). Idempotent approach:
-            // If we created the thread, post; if it existed, do not spam.
-            if (!dryrun && thread && (state.threads[`${channelName}:${threadName}`]?.posted !== true)) {
-              const playable = (pool.playableCountries || []).map((c) => `- ${c}`).join("\n");
-              const ai = (pool.aiCountries || []).map((c) => `- ${c}`).join("\n");
-              const mentions = mentionList(team.players);
+            if (!dryrun && thread && state.threads[`${channelName}:${threadName}`]?.posted !== true) {
+              const playable     = (pool.playableCountries || []).map((c) => `- ${c}`).join("\n");
+              const ai           = (pool.aiCountries || []).map((c) => `- ${c}`).join("\n");
+              const mentions     = mentionList(team.players);
               const subsMentions = mentionList(team.subs);
-
               const body = renderTemplate(template, {
-                EVENT_NAME: cfg.event.name,
-                EVENT_ROUND: String(cfg.event.round),
-                EVENT_KEY: cfg.event.key,
-                MAP_NUMBER: String(map.mapNumber),
-                MAP_NUMBER_PAD2: pad2(map.mapNumber),
-                THEATRE_ID: theatre.id,
-                THEATRE_NAME: theatre.name,
-                TEAM_NAME: team.teamName,
-                COUNTRY_POOL_KEY: poolKey,
-                COUNTRY_POOL_LABEL: pool.label || poolKey,
+                EVENT_NAME: cfg.event.name, EVENT_ROUND: String(cfg.event.round),
+                EVENT_KEY: cfg.event.key, MAP_NUMBER: String(map.mapNumber),
+                MAP_NUMBER_PAD2: pad2(map.mapNumber), THEATRE_ID: theatre.id,
+                THEATRE_NAME: theatre.name, TEAM_NAME: team.teamName,
+                COUNTRY_POOL_KEY: poolKey, COUNTRY_POOL_LABEL: pool.label || poolKey,
                 COUNTRY_POOL_COLOUR: pool.colour || "",
-                PLAYABLE_COUNTRIES: playable || "- (none)",
-                AI_COUNTRIES: ai || "- (none)",
-                PLAYERS_MENTIONS: mentions || "",
-                SUBS_MENTIONS: subsMentions || "- None",
+                PLAYABLE_COUNTRIES: playable || "- (none)", AI_COUNTRIES: ai || "- (none)",
+                PLAYERS_MENTIONS: mentions || "", SUBS_MENTIONS: subsMentions || "- None",
                 TEAM_SIZE: String(cfg.event.teamSize),
               });
-
               await thread.send(body);
-
-              // Add players to the private thread (best-effort)
               await addPlayersToThread(guild, thread, team.players);
               await addPlayersToThread(guild, thread, team.subs);
-
               state.threads[`${channelName}:${threadName}`].posted = true;
             }
           }
         }
 
-        // Optional: post a single message in map channel (only if we created it)
         if (!dryrun && mapChannel) {
-          // Don’t spam on rerun: only post if we created the channel and haven't posted yet
           const chanState = state.channels[channelName] || {};
           if (chanState.posted !== true) {
-            await mapChannel.send(
-              `**${cfg.event.name}**\nMap ${pad2(map.mapNumber)} set up. Private team threads created.`
-            );
+            await mapChannel.send(`**${cfg.event.name}**\nMap ${pad2(map.mapNumber)} set up. Private team threads created.`);
             chanState.posted = true;
             state.channels[channelName] = chanState;
           }
@@ -550,76 +519,64 @@ client.on("interactionCreate", async (interaction) => {
 
       if (!dryrun) saveState(statePath, state);
 
-      const summary =
-        `Done ✅\n` +
-        `Created: ${createdChannels} channels, ${createdThreads} threads\n` +
-        `Reused: ${reusedChannels} channels, ${reusedThreads} threads\n` +
-        `State: ${statePath}`;
-
-      // If dryrun, show plan
       if (dryrun) {
         return interaction.editReply(
           `Dry-run ✅ Nothing created.\n\nPlan:\n${planLines.map((l) => `• ${l}`).join("\n")}`
         );
       }
-
-      return interaction.editReply(summary);
+      return interaction.editReply(
+        `Done ✅\nCreated: ${createdChannels} channels, ${createdThreads} threads\n` +
+        `Reused: ${reusedChannels} channels, ${reusedThreads} threads`
+      );
     }
 
+    // ---- /teardown ----
     if (interaction.commandName === "teardown") {
-      const statePath = path.join(process.cwd(), "data", `state-${cfg.event.key}.json`);
-      const state = loadState(statePath);
+      const categoryId  = process.env.EVENT_CATEGORY_ID;
+      const configBase  = interaction.options.getString("config");
+      const dryrun      = interaction.options.getBoolean("dryrun") ?? false;
+      const deleteState = interaction.options.getBoolean("delete_state") ?? false;
+      const configPath  = path.join(__dirname, "config", `${configBase}.yml`);
 
-      const toDeleteThreads = Object.values(state.threads || {}).map((x) => x.id).filter(Boolean);
+      if (!fs.existsSync(configPath)) return interaction.editReply(`Config not found: ${configPath}`);
+
+      const cfg       = readYaml(configPath);
+      const statePath = path.join(process.cwd(), "data", `state-${cfg.event.key}.json`);
+      const state     = loadState(statePath);
+
+      const toDeleteThreads  = Object.values(state.threads  || {}).map((x) => x.id).filter(Boolean);
       const toDeleteChannels = Object.values(state.channels || {}).map((x) => x.id).filter(Boolean);
 
       if (dryrun) {
         return interaction.editReply(
-          `Dry-run ✅ Nothing deleted.\nThreads: ${toDeleteThreads.length}\nChannels: ${toDeleteChannels.length}\nState: ${statePath}`
+          `Dry-run ✅ Nothing deleted.\nThreads: ${toDeleteThreads.length}\nChannels: ${toDeleteChannels.length}`
         );
       }
 
-      let deletedThreads = 0;
-      let deletedChannels = 0;
-
-      // Delete threads first (they live under channels)
-      for (const threadId of toDeleteThreads) {
+      let deletedThreads = 0, deletedChannels = 0;
+      for (const id of toDeleteThreads) {
         try {
-          const ch = await guild.channels.fetch(threadId).catch(() => null);
-          if (ch) {
-            await ch.delete("Event teardown");
-            deletedThreads++;
-          }
-        } catch (e) {
-          console.log(`Failed to delete thread ${threadId}: ${String(e?.message || e)}`);
-        }
+          const ch = await guild.channels.fetch(id).catch(() => null);
+          if (ch) { await ch.delete("Event teardown"); deletedThreads++; }
+        } catch (e) { console.log(`Failed to delete thread ${id}: ${String(e?.message || e)}`); }
+      }
+      for (const id of toDeleteChannels) {
+        try {
+          const ch = await guild.channels.fetch(id).catch(() => null);
+          if (ch) { await ch.delete("Event teardown"); deletedChannels++; }
+        } catch (e) { console.log(`Failed to delete channel ${id}: ${String(e?.message || e)}`); }
       }
 
-      // Delete channels
-      for (const channelId of toDeleteChannels) {
-        try {
-          const ch = await guild.channels.fetch(channelId).catch(() => null);
-          if (ch) {
-            await ch.delete("Event teardown");
-            deletedChannels++;
-          }
-        } catch (e) {
-          console.log(`Failed to delete channel ${channelId}: ${String(e?.message || e)}`);
-        }
-      }
+      if (deleteState && fs.existsSync(statePath)) fs.unlinkSync(statePath);
 
-      // Keep state file by default (safer). You can delete manually if you want.
       return interaction.editReply(
-        `Teardown complete ✅\nDeleted ${deletedThreads} threads and ${deletedChannels} channels.\nState file retained: ${statePath}`
+        `Teardown complete ✅\nDeleted ${deletedThreads} threads and ${deletedChannels} channels.`
       );
     }
+
   } catch (err) {
-    const msg = String(err?.message || err);
-
-    // Avoid crashing the bot due to an unhandled exception
     console.error("Command error:", err);
-
-    // Try to respond safely
+    const msg = String(err?.message || err);
     try {
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply(`❌ Error: ${msg}`);
