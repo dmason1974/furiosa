@@ -2,22 +2,31 @@
 
 const { Pool } = require("pg");
 
-const pool = new Pool({
-  host:     process.env.PGHOST,
-  port:     parseInt(process.env.PGPORT || "5432", 10),
-  database: process.env.PGDATABASE,
-  user:     process.env.PGUSER,
-  password: process.env.PGPASSWORD,
-  ssl:      { rejectUnauthorized: false },
-  max: 5,
-});
+function makePool(database) {
+  const p = new Pool({
+    host:     process.env.PGHOST,
+    port:     parseInt(process.env.PGPORT || "5432", 10),
+    database,
+    user:     process.env.PGUSER,
+    password: process.env.PGPASSWORD,
+    ssl:      { rejectUnauthorized: false },
+    max: 5,
+  });
+  p.on("error", (err) => console.error(`Unexpected pg pool error (${database}):`, err));
+  return p;
+}
 
-pool.on("error", (err) => {
-  console.error("Unexpected pg pool error:", err);
-});
+const pools = {
+  prod: makePool(process.env.PGDATABASE_PROD || process.env.PGDATABASE || "furyroad"),
+  test: makePool(process.env.PGDATABASE_TEST || "furyroad_test"),
+};
 
-async function initSchema() {
-  await pool.query(`
+function getPool(isTest) {
+  return isTest ? pools.test : pools.prod;
+}
+
+async function initSchema(isTest = false) {
+  await getPool(isTest).query(`
     CREATE TABLE IF NOT EXISTS players (
       player_id     TEXT        PRIMARY KEY,
       discord_name  TEXT        NOT NULL,
@@ -58,9 +67,8 @@ async function initSchema() {
   `);
 }
 
-// Upsert a player from Discord member data. Does not overwrite elo/games_played.
-async function upsertPlayer(playerId, discordName) {
-  await pool.query(
+async function upsertPlayer(playerId, discordName, isTest = false) {
+  await getPool(isTest).query(
     `INSERT INTO players (player_id, discord_name)
      VALUES ($1, $2)
      ON CONFLICT (player_id) DO UPDATE
@@ -70,24 +78,24 @@ async function upsertPlayer(playerId, discordName) {
   );
 }
 
-async function getPlayer(playerId) {
-  const { rows } = await pool.query(
+async function getPlayer(playerId, isTest = false) {
+  const { rows } = await getPool(isTest).query(
     `SELECT * FROM players WHERE player_id = $1`,
     [playerId]
   );
   return rows[0] || null;
 }
 
-async function getPlayers(playerIds) {
-  const { rows } = await pool.query(
+async function getPlayers(playerIds, isTest = false) {
+  const { rows } = await getPool(isTest).query(
     `SELECT * FROM players WHERE player_id = ANY($1)`,
     [playerIds]
   );
   return rows;
 }
 
-async function getRatings() {
-  const { rows } = await pool.query(
+async function getRatings(isTest = false) {
+  const { rows } = await getPool(isTest).query(
     `SELECT player_id, discord_name, elo, games_played
      FROM players
      ORDER BY elo DESC`
@@ -95,8 +103,8 @@ async function getRatings() {
   return rows;
 }
 
-async function recordMatch(matchId, label, resultRows) {
-  const client = await pool.connect();
+async function recordMatch(matchId, label, resultRows, isTest = false) {
+  const client = await getPool(isTest).connect();
   try {
     await client.query("BEGIN");
 
@@ -132,4 +140,4 @@ async function recordMatch(matchId, label, resultRows) {
   }
 }
 
-module.exports = { pool, initSchema, upsertPlayer, getPlayer, getPlayers, getRatings, recordMatch };
+module.exports = { getPool, initSchema, upsertPlayer, getPlayer, getPlayers, getRatings, recordMatch };

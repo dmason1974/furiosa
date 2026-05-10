@@ -151,7 +151,8 @@ const teardownCommand = new SlashCommandBuilder()
 
 const syncMembersCommand = new SlashCommandBuilder()
   .setName("sync_members")
-  .setDescription("Sync all non-bot guild members into the Elo players table");
+  .setDescription("Sync all non-bot guild members into the Elo players table")
+  .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
 const recordMatchCommand = new SlashCommandBuilder()
   .setName("record_match")
@@ -163,11 +164,13 @@ const recordMatchCommand = new SlashCommandBuilder()
     o.setName("rank2").setDescription("2nd place — @mention one or more players").setRequired(true)
   )
   .addStringOption((o) => o.setName("rank3").setDescription("3rd place — @mention one or more players"))
-  .addStringOption((o) => o.setName("rank4").setDescription("4th place — @mention one or more players"));
+  .addStringOption((o) => o.setName("rank4").setDescription("4th place — @mention one or more players"))
+  .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
 const ratingsCommand = new SlashCommandBuilder()
   .setName("ratings")
-  .setDescription("Show the current Elo leaderboard");
+  .setDescription("Show the current Elo leaderboard")
+  .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
 const matchmakeCommand = new SlashCommandBuilder()
   .setName("matchmake")
@@ -177,7 +180,8 @@ const matchmakeCommand = new SlashCommandBuilder()
   )
   .addIntegerOption((o) =>
     o.setName("team_size").setDescription("Players per team (default 1)").setMinValue(1)
-  );
+  )
+  .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
 // ---------------------------
 // Permission check: staff only
@@ -248,8 +252,9 @@ client.once("ready", async () => {
   const guildId = process.env.GUILD_ID;
   if (!guildId) throw new Error("Missing GUILD_ID in .env");
 
-  await db.initSchema();
-  console.log("DB schema ready");
+  await db.initSchema(false);
+  await db.initSchema(true);
+  console.log("DB schema ready (prod + test)");
 
   const guild = await client.guilds.fetch(guildId);
   await guild.commands.set([
@@ -281,20 +286,23 @@ client.on("interactionCreate", async (interaction) => {
 
     // ---- /sync_members ----
     if (interaction.commandName === "sync_members") {
+      const isTest = interaction.options.getBoolean("test") ?? false;
+      await db.initSchema(isTest);
       const members = await guild.members.fetch();
       let humans = 0, bots = 0;
       for (const [, member] of members) {
         if (member.user.bot) { bots++; continue; }
-        await db.upsertPlayer(member.id, member.displayName || member.user.username);
+        await db.upsertPlayer(member.id, member.displayName || member.user.username, isTest);
         humans++;
       }
       return interaction.editReply(
-        `✅ Synced players.\nTotal: ${members.size} | Humans: ${humans} | Bots skipped: ${bots}`
+        `✅ Synced players${isTest ? " **(TEST)**" : ""}.\nTotal: ${members.size} | Humans: ${humans} | Bots skipped: ${bots}`
       );
     }
 
     // ---- /record_match ----
     if (interaction.commandName === "record_match") {
+      const isTest = interaction.options.getBoolean("test") ?? false;
       const rankInputs = [
         interaction.options.getString("rank1"),
         interaction.options.getString("rank2"),
@@ -310,7 +318,7 @@ client.on("interactionCreate", async (interaction) => {
 
       // Flatten all player IDs and fetch from DB
       const allIds    = rankGroups.flat();
-      const dbPlayers = await db.getPlayers(allIds);
+      const dbPlayers = await db.getPlayers(allIds, isTest);
       const byId      = Object.fromEntries(dbPlayers.map((p) => [p.player_id, p]));
 
       const missing = allIds.filter((id) => !byId[id]);
@@ -334,17 +342,18 @@ client.on("interactionCreate", async (interaction) => {
       const matchId  = `M${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const label    = rankGroups.map((ids, i) => `Rank${i + 1}: ${ids.map((id) => byId[id].discord_name).join(", ")}`).join(" | ");
 
-      await db.recordMatch(matchId, label, results);
+      await db.recordMatch(matchId, label, results, isTest);
 
       const lines = results.map(
         (r) => `<@${r.playerId}> (rank ${r.rank}): ${r.eloBefore} → **${r.eloAfter}** (${r.deltaElo >= 0 ? "+" : ""}${r.deltaElo})`
       );
-      return interaction.editReply(`✅ Match recorded.\n${lines.join("\n")}`);
+      return interaction.editReply(`✅ Match recorded${isTest ? " **(TEST)**" : ""}.\n${lines.join("\n")}`);
     }
 
     // ---- /ratings ----
     if (interaction.commandName === "ratings") {
-      const rows = await db.getRatings();
+      const isTest = interaction.options.getBoolean("test") ?? false;
+      const rows = await db.getRatings(isTest);
       if (rows.length === 0) {
         return interaction.editReply("No players in the DB yet. Run /sync_members first.");
       }
@@ -361,7 +370,8 @@ client.on("interactionCreate", async (interaction) => {
         chunk += line + "\n";
       }
       chunks.push(chunk);
-      await interaction.editReply(chunks[0]);
+      const header = `**Elo Leaderboard${isTest ? " (TEST)" : ""}**\n`;
+      await interaction.editReply(chunks[0].replace("**Elo Leaderboard**\n", header));
       for (const c of chunks.slice(1)) {
         await interaction.followUp({ content: c, ephemeral: true });
       }
@@ -370,6 +380,7 @@ client.on("interactionCreate", async (interaction) => {
 
     // ---- /matchmake ----
     if (interaction.commandName === "matchmake") {
+      const isTest    = interaction.options.getBoolean("test") ?? false;
       const playerStr = interaction.options.getString("players");
       const teamSize  = interaction.options.getInteger("team_size") ?? 1;
       const ids       = parseMentions(playerStr);
@@ -378,7 +389,7 @@ client.on("interactionCreate", async (interaction) => {
         return interaction.editReply("❌ Mention at least 2 players.");
       }
 
-      const dbPlayers = await db.getPlayers(ids);
+      const dbPlayers = await db.getPlayers(ids, isTest);
       const byId      = Object.fromEntries(dbPlayers.map((p) => [p.player_id, p]));
       const missing   = ids.filter((id) => !byId[id]);
       if (missing.length > 0) {
