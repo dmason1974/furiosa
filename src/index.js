@@ -232,6 +232,9 @@ const matchmakeCommand = new SlashCommandBuilder()
   .addIntegerOption((o) =>
     o.setName("team_size").setDescription("Players per team").setRequired(true).setMinValue(1)
   )
+  .addIntegerOption((o) =>
+    o.setName("round").setDescription("Round number e.g. 1").setRequired(true).setMinValue(1)
+  )
   .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
 // ---------------------------
@@ -524,22 +527,28 @@ client.on("interactionCreate", async (interaction) => {
       if (rows.length === 0)
         return interaction.editReply(`No matches recorded for season **${season.name}** yet.`);
 
-      const medals = ["🥇", "🥈", "🥉"];
-      const lines  = rows.map((r, i) => {
-        const pos   = medals[i] || `${i + 1}.`;
-        const delta = (r.elo_delta >= 0 ? "+" : "") + r.elo_delta;
-        return `${pos} **${r.discord_name}**  W ${r.wins}  L ${r.losses}  GP ${r.games_played}  ${delta}`;
+      const header = `# Player              W  L  GP  ±Elo\n${"─".repeat(36)}\n`;
+
+      const lines = rows.map((r, i) => {
+        const pos  = String(i + 1).padStart(2);
+        const name = r.discord_name.padEnd(20).slice(0, 20);
+        const w    = String(r.wins).padStart(2);
+        const l    = String(r.losses).padStart(2);
+        const gp   = String(r.games_played).padStart(3);
+        const d    = (r.elo_delta >= 0 ? "+" : "") + r.elo_delta;
+        return `${pos} ${name} ${w} ${l} ${gp}  ${d}`;
       });
 
       return interaction.editReply(
-        `**League Table — ${season.name}${testLabel(isTest)}**\n\n${lines.join("\n")}`
+        `**League Table — ${season.name}${testLabel(isTest)}**\n\`\`\`\n${header}${lines.join("\n")}\n\`\`\``
       );
     }
 
     // ---- /matchmake ----
     if (interaction.commandName === "matchmake") {
-      const teamSize = interaction.options.getInteger("team_size");
-      const lobby    = await db.lobbyList(isTest);
+      const teamSize  = interaction.options.getInteger("team_size");
+      const round     = interaction.options.getInteger("round");
+      const lobby     = await db.lobbyList(isTest);
 
       if (lobby.length < 2)
         return interaction.editReply(`❌ Lobby has ${lobby.length} player(s). Add at least 2 with \`/lobby add\`.`);
@@ -557,16 +566,17 @@ client.on("interactionCreate", async (interaction) => {
         elo:         parseFloat(p.elo),
       }));
 
-      // Generate all matches: shuffle into best splits pair-by-pair
-      const season    = await db.getActiveSeason(isTest);
-      const seasonStr = season ? ` | Season: **${season.name}**` : " | ⚠️ No active season";
-      const toPlayer  = (p) => ({ playerId: p.playerId, discordName: p.discordName });
+      const season     = await db.getActiveSeason(isTest);
+      const seasonStr  = season ? ` | Season: **${season.name}**` : " | ⚠️ No active season";
+      const seasonSlug = season ? slugify(season.name) : "no-season";
+      const toPlayer   = (p) => ({ playerId: p.playerId, discordName: p.discordName });
+
+      const categoryId = process.env.EVENT_CATEGORY_ID;
 
       // Sort by Elo desc, snake-draft into matches
       const sorted  = [...players].sort((a, b) => b.elo - a.elo);
       const matches = Array.from({ length: numMatches }, () => ({ t1: [], t2: [] }));
 
-      // Distribute players snake-style across matches
       let mi = 0, dir = 1;
       for (let i = 0; i < sorted.length; i++) {
         const p = sorted[i];
@@ -584,7 +594,35 @@ client.on("interactionCreate", async (interaction) => {
         const avg1 = Math.round(t1.reduce((s, p) => s + p.elo, 0) / t1.length);
         const avg2 = Math.round(t2.reduce((s, p) => s + p.elo, 0) / t2.length);
         const { matchId, label } = await db.createMatch(t1.map(toPlayer), t2.map(toPlayer), isTest);
-        lines.push(`**Match ${i + 1}** — ${label}\nTeam 1 avg: ${avg1} | Team 2 avg: ${avg2}`);
+
+        // Short suffix from matchId e.g. "M1234567890-abc12" → "abc12"
+        const shortId     = matchId.split("-").pop();
+        const channelName = `${seasonSlug}-r${round}-${shortId}`;
+
+        // Create match channel under EVENT_CATEGORY_ID (skip if no category configured)
+        if (categoryId) {
+          try {
+            const matchChannel = await guild.channels.create({
+              name:   channelName,
+              type:   ChannelType.GuildText,
+              parent: categoryId,
+              reason: `Match ${matchId}`,
+            });
+
+            const t1Mentions = t1.map((p) => `<@${p.playerId}>`).join(" ");
+            const t2Mentions = t2.map((p) => `<@${p.playerId}>`).join(" ");
+            await matchChannel.send(
+              `**Match created** | ${season ? `Season: **${season.name}** | ` : ""}Round: **${round}**\n\n` +
+              `**Team 1** (avg ${avg1} Elo): ${t1Mentions}\n` +
+              `**Team 2** (avg ${avg2} Elo): ${t2Mentions}\n\n` +
+              `Match ID: \`${matchId}\``
+            );
+          } catch (e) {
+            console.error(`Failed to create channel ${channelName}:`, e);
+          }
+        }
+
+        lines.push(`**Match ${i + 1}** — ${label}\nTeam 1 avg: ${avg1} | Team 2 avg: ${avg2} | Channel: #${channelName}`);
       }
 
       const leftoverMsg = leftover > 0
