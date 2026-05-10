@@ -26,7 +26,9 @@ function getPool(isTest) {
 }
 
 async function initSchema(isTest = false) {
-  await getPool(isTest).query(`
+  const pool = getPool(isTest);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS players (
       player_id     TEXT        PRIMARY KEY,
       discord_name  TEXT        NOT NULL,
@@ -38,6 +40,14 @@ async function initSchema(isTest = false) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_players_ingame_name ON players(ingame_name);
+
+    CREATE TABLE IF NOT EXISTS seasons (
+      season_id   TEXT        PRIMARY KEY,
+      name        TEXT        NOT NULL UNIQUE,
+      started_at  TIMESTAMPTZ,
+      ended_at    TIMESTAMPTZ,
+      active      BOOLEAN     NOT NULL DEFAULT FALSE
+    );
 
     CREATE TABLE IF NOT EXISTS matches (
       match_id      TEXT        PRIMARY KEY,
@@ -79,16 +89,21 @@ async function initSchema(isTest = false) {
     CREATE INDEX IF NOT EXISTS idx_match_results_match_id  ON match_results(match_id);
   `);
 
-  // Add new columns to matches if upgrading from old schema
-  await getPool(isTest).query(`
+  // Safe upgrades for existing deployments
+  await pool.query(`
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS status       TEXT    NOT NULL DEFAULT 'pending';
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS winning_team INTEGER;
     ALTER TABLE matches ADD COLUMN IF NOT EXISTS walkover     BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS season_id    TEXT    REFERENCES seasons(season_id) ON DELETE SET NULL;
 
-    CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
+    CREATE INDEX IF NOT EXISTS idx_matches_status    ON matches(status);
+    CREATE INDEX IF NOT EXISTS idx_matches_season_id ON matches(season_id);
   `);
 }
 
+// ---------------------------
+// Players
+// ---------------------------
 async function upsertPlayer(playerId, discordName, isTest = false) {
   await getPool(isTest).query(
     `INSERT INTO players (player_id, discord_name)
@@ -108,28 +123,120 @@ async function getPlayers(playerIds, isTest = false) {
   return rows;
 }
 
+// Top 10 global Elo
 async function getRatings(isTest = false) {
   const { rows } = await getPool(isTest).query(
-    `SELECT player_id, discord_name, elo, games_played
+    `SELECT player_id, discord_name, elo
      FROM players
-     ORDER BY elo DESC`
+     ORDER BY elo DESC
+     LIMIT 10`
   );
   return rows;
 }
 
-// Create a pending match with two teams stored in match_players.
+// ---------------------------
+// Seasons
+// ---------------------------
+async function createSeason(name, isTest = false) {
+  const seasonId = `S-${Date.now()}`;
+  await getPool(isTest).query(
+    `INSERT INTO seasons (season_id, name) VALUES ($1, $2)`,
+    [seasonId, name]
+  );
+  return seasonId;
+}
+
+async function startSeason(name, isTest = false) {
+  const client = await getPool(isTest).connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`UPDATE seasons SET active = FALSE, ended_at = NOW() WHERE active = TRUE`);
+    await client.query(
+      `UPDATE seasons SET active = TRUE, started_at = NOW(), ended_at = NULL WHERE name = $1`,
+      [name]
+    );
+    const { rows } = await client.query(`SELECT * FROM seasons WHERE name = $1`, [name]);
+    await client.query("COMMIT");
+    return rows[0] || null;
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function endSeason(isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `UPDATE seasons SET active = FALSE, ended_at = NOW()
+     WHERE active = TRUE
+     RETURNING *`
+  );
+  return rows[0] || null;
+}
+
+async function getActiveSeason(isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT * FROM seasons WHERE active = TRUE LIMIT 1`
+  );
+  return rows[0] || null;
+}
+
+async function getSeasonByName(name, isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT * FROM seasons WHERE name = $1`,
+    [name]
+  );
+  return rows[0] || null;
+}
+
+async function listSeasons(isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT * FROM seasons ORDER BY started_at DESC NULLS LAST`
+  );
+  return rows;
+}
+
+// League table for a season: W/L/games played/Elo delta per player
+async function getLeagueTable(seasonId, isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT
+       p.player_id,
+       p.discord_name,
+       p.elo                                          AS current_elo,
+       COUNT(mr.match_id)                             AS games_played,
+       SUM(CASE WHEN mr.rank = 1 THEN 1 ELSE 0 END)  AS wins,
+       SUM(CASE WHEN mr.rank = 2 THEN 1 ELSE 0 END)  AS losses,
+       ROUND(SUM(mr.delta_elo)::numeric, 1)           AS elo_delta
+     FROM players p
+     JOIN match_results mr ON mr.player_id = p.player_id
+     JOIN matches m         ON m.match_id  = mr.match_id
+     WHERE m.season_id = $1
+       AND m.walkover  = FALSE
+     GROUP BY p.player_id, p.discord_name, p.elo
+     ORDER BY wins DESC, elo_delta DESC`,
+    [seasonId]
+  );
+  return rows;
+}
+
+// ---------------------------
+// Matches
+// ---------------------------
 async function createMatch(team1, team2, isTest = false) {
-  const matchId = `M${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  const t1Names = team1.map((p) => p.discordName).join(", ");
-  const t2Names = team2.map((p) => p.discordName).join(", ");
-  const label   = `${t1Names} vs ${t2Names}`;
+  const matchId  = `M${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const t1Names  = team1.map((p) => p.discordName).join(", ");
+  const t2Names  = team2.map((p) => p.discordName).join(", ");
+  const label    = `${t1Names} vs ${t2Names}`;
+  const season   = await getActiveSeason(isTest);
+  const seasonId = season?.season_id || null;
 
   const client = await getPool(isTest).connect();
   try {
     await client.query("BEGIN");
     await client.query(
-      `INSERT INTO matches (match_id, label, status) VALUES ($1, $2, 'pending')`,
-      [matchId, label]
+      `INSERT INTO matches (match_id, label, status, season_id) VALUES ($1, $2, 'pending', $3)`,
+      [matchId, label, seasonId]
     );
     for (const p of team1) {
       await client.query(
@@ -144,7 +251,7 @@ async function createMatch(team1, team2, isTest = false) {
       );
     }
     await client.query("COMMIT");
-    return { matchId, label };
+    return { matchId, label, seasonName: season?.name || null };
   } catch (e) {
     await client.query("ROLLBACK");
     throw e;
@@ -153,19 +260,18 @@ async function createMatch(team1, team2, isTest = false) {
   }
 }
 
-// Return up to 25 pending matches for autocomplete.
 async function getPendingMatches(isTest = false) {
   const { rows } = await getPool(isTest).query(
-    `SELECT match_id, label, timestamp
-     FROM matches
-     WHERE status = 'pending'
-     ORDER BY timestamp DESC
+    `SELECT m.match_id, m.label, m.timestamp, s.name AS season_name
+     FROM matches m
+     LEFT JOIN seasons s ON s.season_id = m.season_id
+     WHERE m.status = 'pending'
+     ORDER BY m.timestamp DESC
      LIMIT 25`
   );
   return rows;
 }
 
-// Fetch a match with its two teams (joining current player Elo).
 async function getMatchWithPlayers(matchId, isTest = false) {
   const { rows: matchRows } = await getPool(isTest).query(
     `SELECT * FROM matches WHERE match_id = $1`,
@@ -196,8 +302,6 @@ async function getMatchWithPlayers(matchId, isTest = false) {
   };
 }
 
-// Record the result of a pending match.
-// winningTeam: 1 | 2 | null (walkover)
 async function completeMatch(matchId, winningTeam, eloModule, isTest = false) {
   const data = await getMatchWithPlayers(matchId, isTest);
   if (!data) throw new Error(`Match ${matchId} not found.`);
@@ -254,5 +358,6 @@ async function completeMatch(matchId, winningTeam, eloModule, isTest = false) {
 module.exports = {
   getPool, initSchema,
   upsertPlayer, getPlayers, getRatings,
+  createSeason, startSeason, endSeason, getActiveSeason, getSeasonByName, listSeasons, getLeagueTable,
   createMatch, getPendingMatches, getMatchWithPlayers, completeMatch,
 };

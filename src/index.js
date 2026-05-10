@@ -134,6 +134,28 @@ const teardownCommand = new SlashCommandBuilder()
   .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without deleting anything"))
   .addBooleanOption((o) => o.setName("delete_state").setDescription("Delete state file after teardown"));
 
+const seasonCommand = new SlashCommandBuilder()
+  .setName("season")
+  .setDescription("Manage seasons")
+  .addSubcommand((s) =>
+    s.setName("create").setDescription("Create a new season")
+      .addStringOption((o) => o.setName("name").setDescription("Season name e.g. S1").setRequired(true))
+      .addBooleanOption((o) => o.setName("test").setDescription("Use test database"))
+  )
+  .addSubcommand((s) =>
+    s.setName("start").setDescription("Start a season (ends any currently active season)")
+      .addStringOption((o) => o.setName("name").setDescription("Season name to activate").setRequired(true))
+      .addBooleanOption((o) => o.setName("test").setDescription("Use test database"))
+  )
+  .addSubcommand((s) =>
+    s.setName("end").setDescription("End the currently active season")
+      .addBooleanOption((o) => o.setName("test").setDescription("Use test database"))
+  )
+  .addSubcommand((s) =>
+    s.setName("list").setDescription("List all seasons")
+      .addBooleanOption((o) => o.setName("test").setDescription("Use test database"))
+  );
+
 const syncMembersCommand = new SlashCommandBuilder()
   .setName("sync_members")
   .setDescription("Sync all non-bot guild members into the Elo players table")
@@ -169,6 +191,12 @@ const recordResultCommand = new SlashCommandBuilder()
 const ratingsCommand = new SlashCommandBuilder()
   .setName("ratings")
   .setDescription("Show the current Elo leaderboard")
+  .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
+
+const leagueCommand = new SlashCommandBuilder()
+  .setName("league")
+  .setDescription("Show the league table for a season")
+  .addStringOption((o) => o.setName("season").setDescription("Season name (defaults to active season)"))
   .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
 const matchmakeCommand = new SlashCommandBuilder()
@@ -254,9 +282,11 @@ client.once("ready", async () => {
     setupCommand,
     teardownCommand,
     syncMembersCommand,
+    seasonCommand,
     createMatchCommand,
     recordResultCommand,
     ratingsCommand,
+    leagueCommand,
     matchmakeCommand,
   ]);
   console.log("Registered slash commands");
@@ -307,6 +337,43 @@ client.on("interactionCreate", async (interaction) => {
       );
     }
 
+    // ---- /season ----
+    if (interaction.commandName === "season") {
+      const sub = interaction.options.getSubcommand();
+
+      if (sub === "create") {
+        const name = interaction.options.getString("name");
+        await db.createSeason(name, isTest);
+        return interaction.editReply(`✅ Season **${name}** created${testLabel(isTest)}. Use \`/season start name:${name}\` to activate it.`);
+      }
+
+      if (sub === "start") {
+        const name   = interaction.options.getString("name");
+        const season = await db.getSeasonByName(name, isTest);
+        if (!season) return interaction.editReply(`❌ Season **${name}** not found. Create it first with \`/season create\`.`);
+        await db.startSeason(name, isTest);
+        return interaction.editReply(`✅ Season **${name}** is now active${testLabel(isTest)}. All new matches will be tagged to this season.`);
+      }
+
+      if (sub === "end") {
+        const season = await db.endSeason(isTest);
+        if (!season) return interaction.editReply(`❌ No active season to end.`);
+        return interaction.editReply(`✅ Season **${season.name}** ended${testLabel(isTest)}.`);
+      }
+
+      if (sub === "list") {
+        const seasons = await db.listSeasons(isTest);
+        if (seasons.length === 0) return interaction.editReply("No seasons created yet.");
+        const lines = seasons.map((s) => {
+          const status = s.active ? "🟢 Active" : s.ended_at ? "⚫ Ended" : "⚪ Not started";
+          const started = s.started_at ? new Date(s.started_at).toDateString() : "—";
+          const ended   = s.ended_at   ? new Date(s.ended_at).toDateString()   : "—";
+          return `**${s.name}** ${status} | Started: ${started} | Ended: ${ended}`;
+        });
+        return interaction.editReply(`**Seasons${testLabel(isTest)}**\n${lines.join("\n")}`);
+      }
+    }
+
     // ---- /create_match ----
     if (interaction.commandName === "create_match") {
       const t1Ids = parseMentions(interaction.options.getString("team1"));
@@ -329,8 +396,9 @@ client.on("interactionCreate", async (interaction) => {
       const toPlayer = (id) => ({ playerId: id, discordName: byId[id].discord_name });
       const { matchId, label } = await db.createMatch(t1Ids.map(toPlayer), t2Ids.map(toPlayer), isTest);
 
+      const seasonStr = seasonName ? ` | Season: **${seasonName}**` : " | ⚠️ No active season";
       return interaction.editReply(
-        `✅ Match created${testLabel(isTest)}.\n**${label}**\nID: \`${matchId}\`\nUse \`/record_result\` when the match is complete.`
+        `✅ Match created${testLabel(isTest)}${seasonStr}.\n**${label}**\nUse \`/record_result\` when the match is complete.`
       );
     }
 
@@ -363,7 +431,7 @@ client.on("interactionCreate", async (interaction) => {
         return interaction.editReply("No players in the DB yet. Run /sync_members first.");
 
       const lines = rows.map(
-        (r, i) => `${i + 1}. <@${r.player_id}> — **${Math.round(r.elo)}** (${r.games_played} games)`
+        (r, i) => `${i + 1}. ${r.discord_name} — **${Math.round(r.elo)}**`
       );
       const header = `**Elo Leaderboard${testLabel(isTest)}**\n`;
       const chunks = [];
@@ -376,6 +444,41 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.editReply(chunks[0]);
       for (const c of chunks.slice(1)) await interaction.followUp({ content: c, ephemeral: true });
       return;
+    }
+
+    // ---- /league ----
+    if (interaction.commandName === "league") {
+      const seasonName = interaction.options.getString("season");
+      const season = seasonName
+        ? await db.getSeasonByName(seasonName, isTest)
+        : await db.getActiveSeason(isTest);
+
+      if (!season) {
+        return interaction.editReply(
+          seasonName ? `❌ Season **${seasonName}** not found.` : "❌ No active season. Use \`/season start\` or specify a season name."
+        );
+      }
+
+      const rows = await db.getLeagueTable(season.season_id, isTest);
+      if (rows.length === 0)
+        return interaction.editReply(`No matches recorded for season **${season.name}** yet.`);
+
+      const header = `**League Table — ${season.name}${testLabel(isTest)}**\n` +
+                     `${"─".repeat(36)}\n` +
+                     `# Player              W  L  GP  ±Elo\n` +
+                     `${"─".repeat(36)}\n`;
+
+      const lines = rows.map((r, i) => {
+        const pos  = String(i + 1).padStart(2);
+        const name = r.discord_name.padEnd(20).slice(0, 20);
+        const w    = String(r.wins).padStart(2);
+        const l    = String(r.losses).padStart(2);
+        const gp   = String(r.games_played).padStart(3);
+        const d    = (r.elo_delta >= 0 ? "+" : "") + r.elo_delta;
+        return `${pos} ${name} ${w} ${l} ${gp}  ${d}`;
+      });
+
+      return interaction.editReply(`${header}\`\`\`\n${lines.join("\n")}\n\`\`\``);
     }
 
     // ---- /matchmake ----
