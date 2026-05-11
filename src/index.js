@@ -228,14 +228,27 @@ const leagueCommand = new SlashCommandBuilder()
 
 const matchmakeCommand = new SlashCommandBuilder()
   .setName("matchmake")
-  .setDescription("Split lobby players into balanced teams and create pending matches")
-  .addIntegerOption((o) =>
-    o.setName("team_size").setDescription("Players per team").setRequired(true).setMinValue(1)
+  .setDescription("Matchmaking operations")
+  .addSubcommand((s) =>
+    s.setName("create").setDescription("Split lobby players into balanced teams and create pending matches")
+      .addIntegerOption((o) =>
+        o.setName("team_size").setDescription("Players per team").setRequired(true).setMinValue(1)
+      )
+      .addIntegerOption((o) =>
+        o.setName("round").setDescription("Round number e.g. 1").setRequired(true).setMinValue(1)
+      )
+      .addBooleanOption((o) => o.setName("test").setDescription("Use test database"))
   )
-  .addIntegerOption((o) =>
-    o.setName("round").setDescription("Round number e.g. 1").setRequired(true).setMinValue(1)
-  )
-  .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
+  .addSubcommand((s) =>
+    s.setName("teardown").setDescription("Delete match channels for a given season and round")
+      .addStringOption((o) =>
+        o.setName("season").setDescription("Season name e.g. S1").setRequired(true)
+      )
+      .addIntegerOption((o) =>
+        o.setName("round").setDescription("Round number e.g. 1").setRequired(true).setMinValue(1)
+      )
+      .addBooleanOption((o) => o.setName("dryrun").setDescription("Preview what would be deleted without deleting"))
+  );
 
 // ---------------------------
 // Permission helpers
@@ -546,6 +559,45 @@ client.on("interactionCreate", async (interaction) => {
 
     // ---- /matchmake ----
     if (interaction.commandName === "matchmake") {
+      const sub = interaction.options.getSubcommand();
+
+      // -- teardown --
+      if (sub === "teardown") {
+        const seasonName = interaction.options.getString("season");
+        const round      = interaction.options.getInteger("round");
+        const dryrun     = interaction.options.getBoolean("dryrun") ?? false;
+        const categoryId = process.env.EVENT_CATEGORY_ID;
+
+        if (!categoryId)
+          return interaction.editReply("❌ EVENT_CATEGORY_ID not set in .env");
+
+        const prefix   = `${slugify(seasonName)}-r${round}-`;
+        const channels = await guild.channels.fetch();
+        const toDelete = channels.filter(
+          (c) => c && c.type === ChannelType.GuildText && c.parentId === categoryId && c.name.startsWith(prefix)
+        );
+
+        if (toDelete.size === 0)
+          return interaction.editReply(`No channels found matching \`${prefix}*\` in the event category.`);
+
+        if (dryrun) {
+          const names = [...toDelete.values()].map((c) => `#${c.name}`).join("\n");
+          return interaction.editReply(`Dry-run: would delete **${toDelete.size}** channel(s):\n${names}`);
+        }
+
+        let deleted = 0;
+        for (const [, ch] of toDelete) {
+          try {
+            await ch.delete(`Matchmake teardown: ${seasonName} round ${round}`);
+            deleted++;
+          } catch (e) {
+            console.error(`Failed to delete ${ch.name}:`, e);
+          }
+        }
+        return interaction.editReply(`✅ Deleted **${deleted}** channel(s) matching \`${prefix}*\`.`);
+      }
+
+      // -- create --
       const teamSize  = interaction.options.getInteger("team_size");
       const round     = interaction.options.getInteger("round");
       const lobby     = await db.lobbyList(isTest);
