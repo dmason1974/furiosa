@@ -1,0 +1,174 @@
+version: 6
+
+event:
+  key: "balance-of-power"
+  name: "Balance of Power"
+  round: 1
+  teamSize: 5
+
+adminCountries:
+  - Saudi Arabia
+  - South Africa
+
+maps:
+  - mapNumber: 1
+
+    zones:
+      - zoneNumber: 1
+        homeland:
+          - USA
+          - Canada
+          - Colombia
+          - Mexico
+          - Cuba
+        ai:
+          - Dominican Republic
+          - Guatemala
+          - Haiti
+          - Honduras
+          - Jamaica
+          - Puerto Rico
+        team:
+          teamName: "Pinky and the Brain"
+          players:
+            - "761017768304181298"   # @Fear_Worst
+            - "1308946144260395029"  # @Иван Диков
+            - "394479674853556236"   # @midnightclik
+            - "485975276866764800"   # @Bob the Wise
+            - "377404947169542145"   # @Orschel
+
+      - zoneNumber: 2
+        homeland:
+          - Brazil
+          - Argentina
+          - Peru
+          - Bolivia
+          - Chile
+        ai:
+          - Carribean States
+          - Ecuador
+          - Guyana
+          - Paraguay
+          - Suriname
+          - Uruguay
+        team:
+          teamName: "klion"
+          players:
+            - "919278727198818364"   # @Mordreadth
+            - "978779570234871840"   # @Funderstruck
+            - "1434721549298040913"  # @XxGunnaxX
+            - "532366986928324623"   # @Newtz
+            - "1462169566770888764"  # @Sillysid
+
+      - zoneNumber: 4
+        homeland:
+          - Japan
+          - Indonesia
+          - Australia
+          - New Zealand
+          - Philippines
+        ai:
+          - Brunei
+          - Fiji
+          - Madagascar
+          - Papua New Guinea
+          - South Korea
+        team:
+          teamName: "Goon squad"
+          players:
+            - "794357980073951273"   # @Die Rolle
+            - "908034195744510012"   # @Deorge
+            - "1060511933540859964"  # @JackRyan50
+            - "768914382113210418"   # @Donquixote43
+            - "529524386147860490"   # @Jardo1987
+
+      - zoneNumber: 5
+        homeland:
+          - India
+          - Thailand
+          - Myanmar
+          - Afghanistan
+          - Pakistan
+        ai:
+          - Bangladesh
+          - Kashmir
+          - Sri Lanka
+          - Tajikstan
+        team:
+          teamName: "Good boys"
+          players:
+            - "518478428803170307"   # @Qwerty
+            - "958648650328854548"   # @Radox
+            - "973527882695577610"   # @BennyCZ
+            - "991588328698806312"   # @TRUCKYK
+            - "1363590301175906404"  # @Zoon
+
+      - zoneNumber: 7
+        homeland:
+          - France
+          - Spain
+          - United Kingdom
+          - Italy
+          - Austria
+        ai:
+          - Belgium
+          - Czechia
+          - Iceland
+          - Ireland
+          - Netherlands
+          - Portugal
+          - Slovakia
+          - Switzerland
+        team:
+          teamName: "Big Dawgz"
+          players:
+            - "909294587854602310"   # @LoveToLag
+            - "1104056684466405386"  # @Damnitboi420
+            - "954029763104755713"   # @Matti4u
+            - "1503215012246720622"  # @Alex
+            - "1018499387212701758"  # @ITS
+
+      - zoneNumber: 9
+        homeland:
+          - Germany
+          - Romania
+          - Ukraine
+          - Poland
+          - Greece
+        ai:
+          - Albania
+          - Bosnia
+          - Bulgaria
+          - Croatia
+          - Hungary
+          - Moldova
+          - North Macedonia
+          - Slovenia
+        team:
+          teamName: "House of the Black Banner"
+          players:
+            - "989692953851228201"   # @The Drunken Ostrich
+            - "1324155921936551956"  # @Lsbkruiwagen
+            - "1070329615245131806"  # @Spinonotdino
+            - "808894072122114061"   # @Basedcrawfish
+            - "1410371240723615895"  # @Hanzal001
+
+      - zoneNumber: 10
+        homeland:
+          - Mozambique
+          - Ethiopia
+          - Egypt
+          - DR Congo
+          - Kenya
+        ai:
+          - Angola
+          - Sudan
+          - South Sudan
+        team:
+          teamName: "Death on demand"
+          players:
+            - "711582008505270372"   # @Acequail
+            - "1025463970770997249"  # @Notincharge
+            - "1092945726528552981"  # @Milende11
+            - "1220065291854417963"  # @rishabh_3087
+            - "412339627731582977"   # @Drunkencorn

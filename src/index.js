@@ -72,34 +72,65 @@ function validateConfig(cfg) {
   if (!cfg.event?.name)  errs.push("Missing event.name");
   if (!Number.isInteger(cfg.event?.round))    errs.push("event.round must be an integer");
   if (!Number.isInteger(cfg.event?.teamSize)) errs.push("event.teamSize must be an integer");
-  if (!cfg.countryPools || typeof cfg.countryPools !== "object") errs.push("Missing countryPools object");
+
+  const usesTheatres = Array.isArray(cfg.maps) && cfg.maps.some((m) => Array.isArray(m.theatres));
+  if (usesTheatres && (!cfg.countryPools || typeof cfg.countryPools !== "object"))
+    errs.push("Missing countryPools object");
+
   if (!Array.isArray(cfg.maps) || cfg.maps.length < 1) {
     errs.push("maps must be a non-empty array");
   } else {
     for (const m of cfg.maps) {
       if (!Number.isInteger(m.mapNumber)) errs.push("Each map must have mapNumber (integer)");
-      if (!Array.isArray(m.theatres) || m.theatres.length < 1) {
-        errs.push(`Map ${m.mapNumber}: theatres must be a non-empty array`);
+
+      const hasTheatres = Array.isArray(m.theatres);
+      const hasZones    = Array.isArray(m.zones);
+
+      if (!hasTheatres && !hasZones) {
+        errs.push(`Map ${m.mapNumber}: must have either theatres or zones array`);
         continue;
       }
-      for (const th of m.theatres) {
-        if (!th.id)   errs.push(`Map ${m.mapNumber}: theatre missing id`);
-        if (!th.name) errs.push(`Map ${m.mapNumber}: theatre missing name`);
-        if (!Array.isArray(th.teams) || th.teams.length !== 2) {
-          errs.push(`Map ${m.mapNumber} theatre ${th.id}: must have exactly 2 teams`);
-          continue;
+
+      if (hasTheatres) {
+        if (m.theatres.length < 1) { errs.push(`Map ${m.mapNumber}: theatres must be non-empty`); continue; }
+        for (const th of m.theatres) {
+          if (!th.id)   errs.push(`Map ${m.mapNumber}: theatre missing id`);
+          if (!th.name) errs.push(`Map ${m.mapNumber}: theatre missing name`);
+          if (!Array.isArray(th.teams) || th.teams.length !== 2) {
+            errs.push(`Map ${m.mapNumber} theatre ${th.id}: must have exactly 2 teams`);
+            continue;
+          }
+          for (const team of th.teams) {
+            if (!team.teamName)    errs.push(`Map ${m.mapNumber} theatre ${th.id}: team missing teamName`);
+            if (!team.countryPool) errs.push(`Map ${m.mapNumber} theatre ${th.id}: team missing countryPool`);
+            if (!Array.isArray(team.players)) errs.push(`Map ${m.mapNumber} theatre ${th.id}: team.players must be array`);
+            if (team.subs != null && !Array.isArray(team.subs))
+              errs.push(`Map ${m.mapNumber} theatre ${th.id}: team.subs must be array when provided`);
+            if (team.countryPool && cfg.countryPools && !cfg.countryPools[team.countryPool])
+              errs.push(`Map ${m.mapNumber} theatre ${th.id}: unknown countryPool "${team.countryPool}"`);
+            if (Array.isArray(team.players) && Number.isInteger(cfg.event?.teamSize) &&
+                team.players.length > cfg.event.teamSize)
+              errs.push(`Map ${m.mapNumber} theatre ${th.id} (${team.teamName}): has ${team.players.length} players but teamSize is ${cfg.event.teamSize}`);
+          }
         }
-        for (const team of th.teams) {
-          if (!team.teamName)    errs.push(`Map ${m.mapNumber} theatre ${th.id}: team missing teamName`);
-          if (!team.countryPool) errs.push(`Map ${m.mapNumber} theatre ${th.id}: team missing countryPool`);
-          if (!Array.isArray(team.players)) errs.push(`Map ${m.mapNumber} theatre ${th.id}: team.players must be array`);
-          if (team.subs != null && !Array.isArray(team.subs))
-            errs.push(`Map ${m.mapNumber} theatre ${th.id}: team.subs must be array when provided`);
-          if (team.countryPool && cfg.countryPools && !cfg.countryPools[team.countryPool])
-            errs.push(`Map ${m.mapNumber} theatre ${th.id}: unknown countryPool "${team.countryPool}"`);
-          if (Array.isArray(team.players) && Number.isInteger(cfg.event?.teamSize) &&
-              team.players.length > cfg.event.teamSize)
-            errs.push(`Map ${m.mapNumber} theatre ${th.id} (${team.teamName}): has ${team.players.length} players but teamSize is ${cfg.event.teamSize}`);
+      }
+
+      if (hasZones) {
+        for (const z of m.zones) {
+          if (!Number.isInteger(z.zoneNumber)) errs.push(`Map ${m.mapNumber}: zone missing zoneNumber (integer)`);
+          if (!Array.isArray(z.homeland))      errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: missing homeland array`);
+          if (!Array.isArray(z.ai))            errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: missing ai array`);
+          if (!z.team || typeof z.team !== "object") {
+            errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: missing team object`);
+          } else {
+            if (!z.team.teamName) errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: team missing teamName`);
+            if (!Array.isArray(z.team.players)) errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: team.players must be array`);
+            if (z.team.subs != null && !Array.isArray(z.team.subs))
+              errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: team.subs must be array when provided`);
+            if (Array.isArray(z.team.players) && Number.isInteger(cfg.event?.teamSize) &&
+                z.team.players.length > cfg.event.teamSize)
+              errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber} (${z.team.teamName}): has ${z.team.players.length} players but teamSize is ${cfg.event.teamSize}`);
+          }
         }
       }
     }
@@ -737,12 +768,63 @@ client.on("interactionCreate", async (interaction) => {
           state.channels[channelName] = { id: mapChannel.id };
         }
 
-        for (const theatre of map.theatres) {
-          for (const team of theatre.teams) {
-            const poolKey    = team.countryPool;
-            const pool       = cfg.countryPools[poolKey];
-            const threadName = `${slugify(team.teamName)}-${slugify(poolKey)}`;
-            planLines.push(`  - theatre ${theatre.id}: would ensure private thread "${threadName}"`);
+        if (Array.isArray(map.theatres)) {
+          for (const theatre of map.theatres) {
+            for (const team of theatre.teams) {
+              const poolKey    = team.countryPool;
+              const pool       = cfg.countryPools[poolKey];
+              const threadName = `${slugify(team.teamName)}-${slugify(poolKey)}`;
+              planLines.push(`  - theatre ${theatre.id}: would ensure private thread "${threadName}"`);
+              if (!mapChannel) continue;
+
+              let threadId = state.threads?.[`${channelName}:${threadName}`]?.id;
+              let thread   = threadId ? await guild.channels.fetch(threadId).catch(() => null) : null;
+              if (!thread) thread = await findThreadByName(mapChannel, threadName);
+
+              if (!thread) {
+                if (!dryrun) {
+                  thread = await mapChannel.threads.create({
+                    name: threadName, type: ChannelType.PrivateThread,
+                    autoArchiveDuration: 10080, reason: "Event setup",
+                  });
+                  createdThreads++;
+                  state.threads[`${channelName}:${threadName}`] = { id: thread.id };
+                }
+              } else {
+                reusedThreads++;
+                state.threads[`${channelName}:${threadName}`] = { id: thread.id };
+              }
+
+              if (!dryrun && thread && state.threads[`${channelName}:${threadName}`]?.posted !== true) {
+                const playable = (pool.playableCountries || []).map((c) => `- ${c}`).join("\n");
+                const ai       = (pool.aiCountries || []).map((c) => `- ${c}`).join("\n");
+                const body = renderTemplate(template, {
+                  EVENT_NAME: cfg.event.name, EVENT_ROUND: String(cfg.event.round),
+                  EVENT_KEY: cfg.event.key, MAP_NUMBER: String(map.mapNumber),
+                  MAP_NUMBER_PAD2: pad2(map.mapNumber), THEATRE_ID: theatre.id,
+                  THEATRE_NAME: theatre.name, TEAM_NAME: team.teamName,
+                  COUNTRY_POOL_KEY: poolKey, COUNTRY_POOL_LABEL: pool.label || poolKey,
+                  COUNTRY_POOL_COLOUR: pool.colour || "",
+                  PLAYABLE_COUNTRIES: playable || "- (none)", AI_COUNTRIES: ai || "- (none)",
+                  PLAYERS_MENTIONS: mentionList(team.players), SUBS_MENTIONS: mentionList(team.subs) || "- None",
+                  TEAM_SIZE: String(cfg.event.teamSize),
+                });
+                await thread.send(body);
+                await addPlayersToThread(guild, thread, team.players);
+                await addPlayersToThread(guild, thread, team.subs);
+                state.threads[`${channelName}:${threadName}`].posted = true;
+              }
+            }
+          }
+        }
+
+        if (Array.isArray(map.zones)) {
+          for (const zone of map.zones) {
+            const team = zone.team;
+            if (!team) continue;
+
+            const threadName = slugify(team.teamName);
+            planLines.push(`  - zone ${zone.zoneNumber}: would ensure private thread "${threadName}"`);
             if (!mapChannel) continue;
 
             let threadId = state.threads?.[`${channelName}:${threadName}`]?.id;
@@ -764,17 +846,19 @@ client.on("interactionCreate", async (interaction) => {
             }
 
             if (!dryrun && thread && state.threads[`${channelName}:${threadName}`]?.posted !== true) {
-              const playable     = (pool.playableCountries || []).map((c) => `- ${c}`).join("\n");
-              const ai           = (pool.aiCountries || []).map((c) => `- ${c}`).join("\n");
+              const playable = (zone.homeland || []).map((c) => `- ${c}`).join("\n");
+              const ai       = (zone.ai || []).map((c) => `- ${c}`).join("\n");
               const body = renderTemplate(template, {
                 EVENT_NAME: cfg.event.name, EVENT_ROUND: String(cfg.event.round),
                 EVENT_KEY: cfg.event.key, MAP_NUMBER: String(map.mapNumber),
-                MAP_NUMBER_PAD2: pad2(map.mapNumber), THEATRE_ID: theatre.id,
-                THEATRE_NAME: theatre.name, TEAM_NAME: team.teamName,
-                COUNTRY_POOL_KEY: poolKey, COUNTRY_POOL_LABEL: pool.label || poolKey,
-                COUNTRY_POOL_COLOUR: pool.colour || "",
-                PLAYABLE_COUNTRIES: playable || "- (none)", AI_COUNTRIES: ai || "- (none)",
-                PLAYERS_MENTIONS: mentionList(team.players), SUBS_MENTIONS: mentionList(team.subs) || "- None",
+                MAP_NUMBER_PAD2: pad2(map.mapNumber),
+                ZONE_NUMBER: String(zone.zoneNumber),
+                ZONE_NAME: zone.name || `Zone ${zone.zoneNumber}`,
+                TEAM_NAME: team.teamName,
+                PLAYABLE_COUNTRIES: playable || "- (none)",
+                AI_COUNTRIES: ai || "- (none)",
+                PLAYERS_MENTIONS: mentionList(team.players),
+                SUBS_MENTIONS: mentionList(team.subs) || "- None",
                 TEAM_SIZE: String(cfg.event.teamSize),
               });
               await thread.send(body);
