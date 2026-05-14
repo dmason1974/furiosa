@@ -23,7 +23,7 @@
 ---
 
 > **Admin countries (not capturable):** Saudi Arabia, South Africa
-> Countries not listed above are not to be captured.
+> Countries not listed above are not to be captured during truce.
 
 ---
 
