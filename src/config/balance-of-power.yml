@@ -13,6 +13,7 @@ adminCountries:
 maps:
   - mapNumber: 1
 
+
     zones:
       - zoneNumber: 1
         homeland:
@@ -172,3 +173,191 @@ maps:
             - "1092945726528552981"  # @Milende11
             - "1220065291854417963"  # @rishabh_3087
             - "412339627731582977"   # @Drunkencorn
+
+  - mapNumber: 2
+
+    zones:
+      - zoneNumber: 1
+        homeland:
+          - USA
+          - Canada
+          - Colombia
+          - Mexico
+          - Cuba
+        ai:
+          - Dominican Republic
+          - Guatemala
+          - Haiti
+          - Honduras
+          - Jamaica
+          - Puerto Rico
+        team:
+          teamName: "klion"
+          players:
+            - "919278727198818364"   # @Mordreadth
+            - "1309112183732437065"  # @FreePal
+            - "978779570234871840"   # @Funderstruck
+            - "532366986928324623"   # @Newtz
+            - "784228032419725333"   # @Yung Vino
+
+      - zoneNumber: 2
+        homeland:
+          - Brazil
+          - Argentina
+          - Peru
+          - Bolivia
+          - Chile
+        ai:
+          - Carribean States
+          - Ecuador
+          - Guyana
+          - Paraguay
+          - Suriname
+          - Uruguay
+        team:
+          teamName: "Valhallas Elite"
+          players:
+            - "431559809972568064"   # @Feek
+            - "163749797193449473"   # @Tautvis
+            - "855110502912229426"   # @iopsys
+            - "348597168166404096"   # @IVIONSTER30666
+            - "652407765796651011"   # @Sgt.Altair
+
+      - zoneNumber: 5
+        homeland:
+          - India
+          - Thailand
+          - Myanmar
+          - Afghanistan
+          - Pakistan
+        ai:
+          - Bangladesh
+          - Kashmir
+          - Sri Lanka
+          - Tajikstan
+        team:
+          teamName: "Death on demand"
+          players:
+            - "711582008505270372"   # @Acequail
+            - "1109700576406679653"  # @Cobra Kai
+            - "614118049146077435"   # @ΩmegaKratos
+            - "1109111447742590986"  # @hak
+            - "1092945726528552981"  # @Milende11
+
+      - zoneNumber: 6
+        homeland:
+          - Russia
+          - Sweden
+          - Belarus
+          - Norway
+          - Finland
+        ai:
+          - Armenia
+          - Azerbaijan
+          - Estonia
+          - Georgia
+          - Lithuania
+          - Lativa
+        team:
+          teamName: "Elite Strike Force"
+          players:
+            - "908034195744510012"   # @Deorge
+            - "394479674853556236"   # @midnightclik
+            - "975039163655155782"   # @(ESF) colonizer17
+            - "891282253039145020"   # @Schneewittchen
+            - "1322541191190806578"  # @Kamenos13
+
+      - zoneNumber: 7
+        homeland:
+          - France
+          - Spain
+          - United Kingdom
+          - Italy
+          - Austria
+        ai:
+          - Belgium
+          - Czechia
+          - Iceland
+          - Ireland
+          - Netherlands
+          - Portugal
+          - Slovakia
+          - Switzerland
+        team:
+          teamName: "BobzeBoss"
+          players:
+            - "994830455595610123"   # @BobZeBuilder
+            - "909294587854602310"   # @LoveToLag
+            - "478638489496190986"   # @steampunk74
+            - "1091560801883656192"  # @Dave
+            - "899628660607303711"   # @sv
+
+      - zoneNumber: 8
+        homeland:
+          - Iran
+          - Iraq
+          - Syria
+          - Israel
+          - Turkey
+        ai:
+          - Jordan
+          - Kuwait City
+          - Kyrgyzstan
+          - Lebanon
+          - Oman
+          - Turkmenistan
+          - Uzbekistan
+          - Yemen
+        team:
+          teamName: "Bulgarian Army"
+          players:
+            - "1308946144260395029"  # @Vankkooo
+            - "192625934912716800"   # @Nemmty
+            - "392096050736922624"   # @IvanBG
+            - "800745807140880424"   # @Garviel Loken
+            - "1208279220250345503"  # @StoianBG
+
+      - zoneNumber: 9
+        homeland:
+          - Germany
+          - Romania
+          - Ukraine
+          - Poland
+          - Greece
+        ai:
+          - Albania
+          - Bosnia
+          - Bulgaria
+          - Croatia
+          - Hungary
+          - Moldova
+          - North Macedonia
+          - Slovenia
+        team:
+          teamName: "HOBB"
+          players:
+            - "989692953851228201"   # @The Drunken Ostrich
+            - "1324155921936551956"  # @Lsbkruiwagen
+            - "1070329615245131806"  # @Spinonotdino
+            # jasonlynch - add manually
+            # lonekisa - add manually
+
+      - zoneNumber: 10
+        homeland:
+          - Mozambique
+          - Ethiopia
+          - Egypt
+          - DR Congo
+          - Kenya
+        ai:
+          - Angola
+          - Sudan
+          - South Sudan
+        team:
+          teamName: "Win With Style"
+          players:
+            - "504248810223042570"   # @Morbius
+            - "254673651310264320"   # @Masterz32
+            - "147306654617488602"   # @[WWS] Rhaegar
+            - "249599835114569728"   # @[WWS] Morning
+            - "720566914052653149"   # @Tartino
