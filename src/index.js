@@ -29,7 +29,10 @@ const STANDING_CHANNEL_NAMES = ["event-chat", "rules", "registered-teams", "regi
 // (e.g. "registration" is posted to only via its apply panel component, not free text).
 const STANDING_CHANNEL_OPEN_POST = new Set(["event-chat"]);
 const STANDING_CHANNEL_TOPICS = {
-  registration: "Register here: /register team:<name> ign:<name> — one entry per player, re-running updates it. Staff approve teams before they appear in #registered-teams.",
+  registration:
+    "Register here: /register team:<name> ign:<name>\n" +
+    "One entry per player — re-running updates it.\n" +
+    "Staff approve teams before they appear in #registered-teams.",
 };
 const WARBOY_GATED_COMMANDS = new Set(["register"]);
 
