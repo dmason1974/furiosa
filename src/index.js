@@ -30,8 +30,10 @@ const STANDING_CHANNEL_NAMES = ["event-chat", "rules", "registered-teams", "regi
 const STANDING_CHANNEL_OPEN_POST = new Set(["event-chat"]);
 const STANDING_CHANNEL_TOPICS = {
   registration:
-    "/register team:<name> ign:<name> — register your team (re-run to update; one entry per player)\n" +
-    "/unregister — withdraw your registration\n" +
+    "\n" +
+    "**/register team:<name> ign:<name>**  — register your team (re-run to update; one entry per player)\n" +
+    "**/unregister**  — withdraw your registration\n" +
+    "\n" +
     "Staff must approve your team before it appears in #registered-teams",
 };
 // Slash commands aren't rate-limited by slowmode (only regular messages are),
