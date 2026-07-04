@@ -172,3 +172,10 @@ This bot is designed to be:
 - Re-runnable without fear
 
 If something looks wrong: dry run, fix config, run again.
+
+---
+
+## Deployment
+
+Furiosa runs as a systemd service on a single Ubuntu box. See
+[`deploy/README.md`](deploy/README.md) for the full setup/redeploy runbook.

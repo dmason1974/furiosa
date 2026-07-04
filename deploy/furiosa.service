@@ -1,0 +1,19 @@
+[Unit]
+Description=Furiosa Discord Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=furiosa
+WorkingDirectory=/opt/furiosa
+EnvironmentFile=/opt/furiosa/.env
+ExecStart=/usr/bin/node /opt/furiosa/src/index.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
