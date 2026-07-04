@@ -111,7 +111,7 @@ category hasn't been created yet, it'll tell you to run `/setup event` first.
 
 ## Teardown (Remove a Round's Map Channels)
 
-`/teardown` only removes a round's map channels and threads — it never
+`/teardown maps` only removes a round's map channels and threads — it never
 touches the event's category or standing channels, since those usually hold
 history worth keeping across rounds.
 
@@ -119,8 +119,8 @@ history worth keeping across rounds.
 
 See what would be deleted:
 
-- `/teardown event:bop dryrun:true`
-- `/teardown event:beyond-thunderdome round:r1-flagship dryrun:true`
+- `/teardown maps event:bop dryrun:true`
+- `/teardown maps event:beyond-thunderdome round:r1-flagship dryrun:true`
 
 ---
 
@@ -128,7 +128,7 @@ See what would be deleted:
 
 Deletes channels and threads created by the bot, but keeps the state file.
 
-`/teardown event:bop`
+`/teardown maps event:bop`
 
 Recommended if you may want to inspect or recreate later.
 
@@ -138,9 +138,25 @@ Recommended if you may want to inspect or recreate later.
 
 Deletes everything and removes the state file.
 
-`/teardown event:bop delete_state:true`
+`/teardown maps event:bop delete_state:true`
 
 Use this only when you are sure you want a clean slate.
+
+---
+
+## Removing an Event Entirely
+
+`/teardown event` deletes the event's category and its 4 standing channels
+(`event-chat`, `rules`, `registered-teams`, `registration`) — use this to
+fully clean up a test or finished event. It does **not** touch any round's
+map channels/threads; if those still exist, run `/teardown maps` for each
+round first, or the command will warn you they're still there.
+
+- `/teardown event event:blood-pact dryrun:true` — preview what would be deleted
+- `/teardown event event:blood-pact` — actually deletes the category + standing channels
+
+Safe to re-run — if the category is already gone, it reports there's nothing
+to tear down instead of erroring.
 
 ---
 

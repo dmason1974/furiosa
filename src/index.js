@@ -74,6 +74,20 @@ function roundStatePath(eventKey, round) {
   return path.join(roundDataDir(eventKey, round), "state.json");
 }
 
+function findLingeringRoundStates(eventKey) {
+  const base = eventDataDir(eventKey);
+  const found = [];
+  if (fs.existsSync(path.join(base, "state.json"))) found.push("(no round)");
+  if (fs.existsSync(base)) {
+    for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
+      if (entry.isDirectory() && fs.existsSync(path.join(base, entry.name, "state.json"))) {
+        found.push(entry.name);
+      }
+    }
+  }
+  return found;
+}
+
 function renderTemplate(template, vars) {
   let out = template;
   for (const [k, v] of Object.entries(vars)) out = out.replaceAll(`{{${k}}}`, v ?? "");
@@ -202,15 +216,25 @@ const setupCommand = new SlashCommandBuilder()
 
 const teardownCommand = new SlashCommandBuilder()
   .setName("teardown")
-  .setDescription("Delete channels/threads created by /setup maps")
-  .addStringOption((o) =>
-    o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+  .setDescription("Remove things /setup created")
+  .addSubcommand((s) =>
+    s.setName("event").setDescription("Delete the event's category and standing channels")
+      .addStringOption((o) =>
+        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+      )
+      .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without deleting anything"))
   )
-  .addStringOption((o) =>
-    o.setName("round").setDescription("Round subdirectory name (omit if the event has no rounds)")
-  )
-  .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without deleting anything"))
-  .addBooleanOption((o) => o.setName("delete_state").setDescription("Delete state file after teardown"));
+  .addSubcommand((s) =>
+    s.setName("maps").setDescription("Delete channels/threads created by /setup maps")
+      .addStringOption((o) =>
+        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+      )
+      .addStringOption((o) =>
+        o.setName("round").setDescription("Round subdirectory name (omit if the event has no rounds)")
+      )
+      .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without deleting anything"))
+      .addBooleanOption((o) => o.setName("delete_state").setDescription("Delete state file after teardown"))
+  );
 
 const lobbyCommand = new SlashCommandBuilder()
   .setName("lobby")
@@ -1019,7 +1043,48 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     // ---- /teardown ----
-    if (interaction.commandName === "teardown") {
+    // ---- /teardown event ----
+    if (interaction.commandName === "teardown" && interaction.options.getSubcommand() === "event") {
+      const eventKey  = interaction.options.getString("event");
+      const dryrun    = interaction.options.getBoolean("dryrun") ?? false;
+      const statePath = categoryStatePath(eventKey);
+      const state     = loadJson(statePath, { categoryId: null, standingChannels: {} });
+
+      if (!state.categoryId) return interaction.editReply(`Nothing to tear down — no category found for "${eventKey}".`);
+
+      const standingIds     = Object.values(state.standingChannels || {}).map((x) => x.id).filter(Boolean);
+      const lingeringRounds = findLingeringRoundStates(eventKey);
+      const warning = lingeringRounds.length
+        ? `\n⚠️ Round(s) still have tracked map channels/threads: ${lingeringRounds.join(", ")}. ` +
+          `Run \`/teardown maps\` for those first if you want them cleaned up too — this won't touch them.`
+        : "";
+
+      if (dryrun) {
+        return interaction.editReply(
+          `Dry-run ✅\nWould delete category "${eventKey}" and ${standingIds.length} standing channel(s).${warning}`
+        );
+      }
+
+      let deletedStanding = 0;
+      for (const id of standingIds) {
+        try {
+          const ch = await guild.channels.fetch(id).catch(() => null);
+          if (ch) { await ch.delete("Event teardown"); deletedStanding++; }
+        } catch (e) { console.log(`Failed to delete standing channel ${id}: ${String(e?.message || e)}`); }
+      }
+
+      const category = await guild.channels.fetch(state.categoryId).catch(() => null);
+      if (category) await category.delete("Event teardown").catch((e) => console.log(`Failed to delete category: ${String(e?.message || e)}`));
+
+      if (fs.existsSync(statePath)) fs.unlinkSync(statePath);
+
+      return interaction.editReply(
+        `Teardown complete ✅\nDeleted category "${eventKey}" and ${deletedStanding} standing channel(s).${warning}`
+      );
+    }
+
+    // ---- /teardown maps ----
+    if (interaction.commandName === "teardown" && interaction.options.getSubcommand() === "maps") {
       const eventKey    = interaction.options.getString("event");
       const round       = interaction.options.getString("round") || null;
       const dryrun      = interaction.options.getBoolean("dryrun") ?? false;
