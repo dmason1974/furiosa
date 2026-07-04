@@ -344,9 +344,13 @@ client.once("ready", async () => {
   const guildId = process.env.GUILD_ID;
   if (!guildId) throw new Error("Missing GUILD_ID in .env");
 
-  await db.initSchema(false);
-  await db.initSchema(true);
-  console.log("DB schema ready (prod + test)");
+  try {
+    await db.initSchema(false);
+    await db.initSchema(true);
+    console.log("DB schema ready (prod + test)");
+  } catch (err) {
+    console.error("DB schema init failed, continuing without matchmaking/ELO features:", err.message);
+  }
 
   const guild = await client.guilds.fetch(guildId);
   await guild.commands.set([
