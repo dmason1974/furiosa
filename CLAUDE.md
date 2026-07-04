@@ -87,14 +87,51 @@ src/config/
   `/setup event`'s `max_team_size` option, default 5); posts an Approve/Reject
   button notification to `EVENT_APPLICATIONS_CHANNEL_ID` when a team first
   reaches capacity.
+- `/unregister` — withdraws the caller's own registration for the event
+  inferred from the channel it's run in (same Warboy gating and channel
+  inference as `/register`). Refreshes `#registered-teams` if they'd already
+  been approved.
 - `/registrations list|approve|approve_player|reject|reject_team|export
   event:<key>` — staff-only. Nothing reaches `#registered-teams` without
   going through `approve`/`approve_player` (bulk-per-team is the primary
   path). `export` dumps approved teams as a YAML snippet for pasting into a
   round's `config.yml` once zone/map allocation is decided.
+  - **Known gap, deliberately deferred**: `/teardown event` does not delete
+    `registrations.json`. Tearing down and recreating an event will resurface
+    old registrations. Flagged, not fixed — revisit if it causes confusion.
 - `/lobby`, `/matchmake`, `/create_match`, `/record_result`, `/season`,
   `/league` — matchmaking/ELO system, **WIP, not load-bearing**. Backed by
   Postgres (`src/db.js`, `src/elo.js`). See "Known constraints" below.
+
+## Discord quirks learned the hard way (don't re-litigate these)
+
+- **Slash commands need `SendMessages`, not just `UseApplicationCommands`,
+  in a channel that denies the former.** Tested directly: granting only
+  `UseApplicationCommands` to the Warboy role in `#registration` did NOT let
+  them run `/register` — `SendMessages` had to be granted too, despite
+  `UseApplicationCommands` being the permission conceptually meant to gate
+  slash commands. `standingChannelOverwrites()` now grants Warboys both in
+  `#registration`. Side effect: Warboys can technically free-text chat there
+  now too — mitigated with a 1-hour slowmode (`STANDING_CHANNEL_SLOWMODE`),
+  which doesn't affect slash command usage (slowmode only throttles regular
+  messages).
+- **A channel topic starting with a bare `\n` gets silently trimmed by
+  Discord's API** — it does not produce a visible line break before the
+  topic content in the "Welcome to #channel!" card (which otherwise runs
+  Discord's own "This is the start of..." sentence straight into your topic
+  text with no separator). Fix: start the topic with `.` then `\n\n` — a
+  leading non-whitespace character survives trimming, and the `.` reads as
+  closing the boilerplate sentence.
+- **Channel topics don't auto-format slash-command mentions.** Bold them
+  manually with `**/command**` if you want them visually distinct — nothing
+  auto-bolds plain `/command` text in a topic string.
+- An uncaught `DiscordAPIError[10008] Unknown Message` (editing an
+  interaction reply that no longer exists) crashed the whole process once
+  this session — Node 20 terminates on unhandled promise rejections, and
+  systemd's `Restart=on-failure` brought it back in ~5s. Root cause not
+  investigated/fixed; if it recurs, the outer `catch` in `interactionCreate`
+  needs to swallow failures from the *success-path* `editReply` too, not
+  just the error-path one.
 
 ## Known constraints / non-negotiables
 
@@ -113,6 +150,12 @@ src/config/
   with `/setup event`.
 - **`CHANNEL_PREFIX`/`THREAD_PREFIX` are gone** — confirmed dead (never
   referenced in code) and removed from `.env.example`.
+- **Two new required env vars for the registration feature**:
+  `WARBOY_ROLE_ID` (the general member role allowed to use `/register`/
+  `/unregister`) and `EVENT_APPLICATIONS_CHANNEL_ID` (where team-ready
+  Approve/Reject notifications post). Both are set in `.env` on the current
+  Fury Road server/box — will need real values again for any other server
+  (see Future plan: test server below).
 - No automated Lightsail snapshots — deliberate cost decision for a hobby
   project. Rebuilding from git + a fresh instance is the accepted recovery
   path, not snapshot restore.
@@ -124,6 +167,14 @@ src/config/
 
 ## Future plan / open items
 
+- **Next session: deploy to a test Discord server.** The registration
+  feature (`/register`, `/unregister`, `/registrations`, Approve/Reject
+  buttons) has only been exercised on the live Fury Road server so far. Plan
+  is to stand up a separate test server before going further, so iteration
+  doesn't risk the real one. This will need its own `GUILD_ID`,
+  `EVENT_STAFF_ROLE_ID`, `WARBOY_ROLE_ID`, and `EVENT_APPLICATIONS_CHANNEL_ID`
+  — either a second `.env`/instance, or a documented way to swap servers on
+  the existing box. Not started/designed yet.
 - **Matchmake/ELO rearchitecture**: give `/lobby`/`/matchmake`/`/create_match`
   their own way to resolve a category (mirroring `/setup event`'s model)
   instead of the removed `EVENT_CATEGORY_ID`. Not started.
