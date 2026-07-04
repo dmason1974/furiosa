@@ -514,14 +514,15 @@ function standingChannelOverwrites(guild, channelName) {
     },
   ];
 
-  // Slash commands are gated by Use Application Commands, separate from Send
-  // Messages -- Warboys need it allowed in #registration to run /register,
-  // while still being denied free-text posting there like everyone else.
+  // Tested in practice: Use Application Commands alone was NOT sufficient to
+  // let Warboys run /register here -- Send Messages is required too, despite
+  // slash commands being conceptually gated by the former. Grant both rather
+  // than relying on the documented-but-apparently-incomplete permission model.
   const warboyRoleId = process.env.WARBOY_ROLE_ID;
   if (channelName === "registration" && warboyRoleId) {
     overwrites.push({
       id: warboyRoleId,
-      allow: [PermissionsBitField.Flags.UseApplicationCommands],
+      allow: [PermissionsBitField.Flags.UseApplicationCommands, PermissionsBitField.Flags.SendMessages],
     });
   }
 
