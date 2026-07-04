@@ -29,6 +29,11 @@ if ! id -u "$APP_USER" >/dev/null 2>&1; then
 fi
 
 # --- Clone or pull ---
+# Repo dir ends up owned by $APP_USER (chown below), but this script runs as
+# root, so git's "dubious ownership" guard needs an explicit exemption.
+git config --global --get-all safe.directory 2>/dev/null | grep -qx "$APP_DIR" \
+  || git config --global --add safe.directory "$APP_DIR"
+
 if [ -d "$APP_DIR/.git" ]; then
   echo "Pulling latest code in ${APP_DIR}..."
   git -C "$APP_DIR" pull --ff-only
