@@ -2,9 +2,10 @@
 
 require("dotenv").config();
 
-const fs   = require("fs");
-const path = require("path");
-const yaml = require("js-yaml");
+const fs     = require("fs");
+const path   = require("path");
+const yaml   = require("js-yaml");
+const crypto = require("crypto");
 
 const {
   Client,
@@ -12,6 +13,9 @@ const {
   SlashCommandBuilder,
   ChannelType,
   PermissionsBitField,
+  ButtonBuilder,
+  ActionRowBuilder,
+  ButtonStyle,
 } = require("discord.js");
 
 const db  = require("./db");
@@ -24,6 +28,10 @@ const STANDING_CHANNEL_NAMES = ["event-chat", "rules", "registered-teams", "regi
 // Standing channels where @everyone may send messages; all others are view-only
 // (e.g. "registration" is posted to only via its apply panel component, not free text).
 const STANDING_CHANNEL_OPEN_POST = new Set(["event-chat"]);
+const STANDING_CHANNEL_TOPICS = {
+  registration: "Register here: /register team:<name> ign:<name> — one entry per player, re-running updates it. Staff approve teams before they appear in #registered-teams.",
+};
+const WARBOY_GATED_COMMANDS = new Set(["register"]);
 
 function pad2(n) { return String(n).padStart(2, "0"); }
 
@@ -75,6 +83,33 @@ function categoryStatePath(eventKey) {
 
 function roundStatePath(eventKey, round) {
   return path.join(roundDataDir(eventKey, round), "state.json");
+}
+
+function registrationsStatePath(eventKey) {
+  return path.join(eventDataDir(eventKey), "registrations.json");
+}
+
+function loadRegistrations(eventKey) {
+  return loadJson(registrationsStatePath(eventKey), {
+    registeredTeamsMessageId: null,
+    entries: {},
+    pendingReviews: {},
+  });
+}
+
+// Reverse-resolves an event key from a channel's parent category ID by
+// scanning every event's category.json for a matching categoryId.
+function eventKeyForCategory(categoryId) {
+  const dataDir = path.join(process.cwd(), "data");
+  if (!categoryId || !fs.existsSync(dataDir)) return null;
+  for (const entry of fs.readdirSync(dataDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const catPath = path.join(dataDir, entry.name, "category.json");
+    if (!fs.existsSync(catPath)) continue;
+    const cat = loadJson(catPath, { categoryId: null });
+    if (cat.categoryId === categoryId) return entry.name;
+  }
+  return null;
 }
 
 function findLingeringRoundStates(eventKey) {
@@ -204,6 +239,9 @@ const setupCommand = new SlashCommandBuilder()
       .addStringOption((o) =>
         o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
       )
+      .addIntegerOption((o) =>
+        o.setName("max_team_size").setDescription("Max players per team for registration (default 5, preserved if omitted)")
+      )
       .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without creating anything"))
   )
   .addSubcommand((s) =>
@@ -237,6 +275,65 @@ const teardownCommand = new SlashCommandBuilder()
       )
       .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without deleting anything"))
       .addBooleanOption((o) => o.setName("delete_state").setDescription("Delete state file after teardown"))
+  );
+
+const registerCommand = new SlashCommandBuilder()
+  .setName("register")
+  .setDescription("Register yourself and your team for this event (run in #registration)")
+  .addStringOption((o) =>
+    o.setName("team").setDescription("Your team name").setRequired(true).setAutocomplete(true)
+  )
+  .addStringOption((o) =>
+    o.setName("ign").setDescription("Your in-game name").setRequired(true)
+  );
+
+const registrationsCommand = new SlashCommandBuilder()
+  .setName("registrations")
+  .setDescription("Review and manage player registrations")
+  .addSubcommand((s) =>
+    s.setName("list").setDescription("List registrations for an event")
+      .addStringOption((o) =>
+        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+      )
+  )
+  .addSubcommand((s) =>
+    s.setName("approve").setDescription("Bulk-approve every pending registration for a team")
+      .addStringOption((o) =>
+        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+      )
+      .addStringOption((o) =>
+        o.setName("team").setDescription("Team name").setRequired(true).setAutocomplete(true)
+      )
+  )
+  .addSubcommand((s) =>
+    s.setName("approve_player").setDescription("Approve a single player's registration")
+      .addStringOption((o) =>
+        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+      )
+      .addUserOption((o) => o.setName("player").setDescription("Player to approve").setRequired(true))
+  )
+  .addSubcommand((s) =>
+    s.setName("reject").setDescription("Reject a single player's registration")
+      .addStringOption((o) =>
+        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+      )
+      .addUserOption((o) => o.setName("player").setDescription("Player to reject").setRequired(true))
+      .addStringOption((o) => o.setName("reason").setDescription("Optional reason"))
+  )
+  .addSubcommand((s) =>
+    s.setName("reject_team").setDescription("Bulk-reject every pending registration for a team")
+      .addStringOption((o) =>
+        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+      )
+      .addStringOption((o) =>
+        o.setName("team").setDescription("Team name").setRequired(true).setAutocomplete(true)
+      )
+  )
+  .addSubcommand((s) =>
+    s.setName("export").setDescription("Export approved teams as a YAML-ready snippet")
+      .addStringOption((o) =>
+        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+      )
   );
 
 const lobbyCommand = new SlashCommandBuilder()
@@ -364,6 +461,12 @@ function isStaff(interaction) {
   return interaction.member?.roles?.cache?.has(staffRoleId);
 }
 
+function isWarboy(interaction) {
+  const warboyRoleId = process.env.WARBOY_ROLE_ID;
+  if (!warboyRoleId) return false;
+  return interaction.member?.roles?.cache?.has(warboyRoleId);
+}
+
 async function assertBotAccess(guild, categoryId) {
   const category = await guild.channels.fetch(categoryId);
   if (!category) throw new Error(`EVENT_CATEGORY_ID not found: ${categoryId}`);
@@ -450,6 +553,110 @@ async function findChannelByNameInCategory(guild, categoryId, channelName) {
   );
 }
 
+// ---------------------------
+// Registrations
+// ---------------------------
+async function syncRegisteredTeamsChannel(guild, eventKey) {
+  const catState = loadJson(categoryStatePath(eventKey), { categoryId: null, standingChannels: {} });
+  const channelInfo = catState.standingChannels?.["registered-teams"];
+  if (!channelInfo?.id) return;
+  const channel = await guild.channels.fetch(channelInfo.id).catch(() => null);
+  if (!channel) return;
+
+  const regState = loadRegistrations(eventKey);
+  const approved = Object.entries(regState.entries).filter(([, e]) => e.status === "approved");
+
+  const byTeam = {};
+  for (const [userId, entry] of approved) {
+    (byTeam[entry.team] ||= []).push({ userId, ign: entry.ign });
+  }
+  const teamNames = Object.keys(byTeam).sort((a, b) => a.localeCompare(b));
+
+  const lines = [`**Registered Teams — ${eventKey}**`, `_Last updated: ${new Date().toISOString()}_`, ""];
+  if (teamNames.length === 0) {
+    lines.push("_No teams approved yet._");
+  } else {
+    for (const team of teamNames) {
+      lines.push(`**${team}**`);
+      for (const p of byTeam[team]) {
+        lines.push(p.ign ? `• <@${p.userId}> (IGN: ${p.ign})` : `• <@${p.userId}>`);
+      }
+      lines.push("");
+    }
+  }
+  const body = lines.join("\n").trim();
+
+  let message = regState.registeredTeamsMessageId
+    ? await channel.messages.fetch(regState.registeredTeamsMessageId).catch(() => null)
+    : null;
+
+  if (message) {
+    await message.edit(body);
+  } else {
+    message = await channel.send(body);
+    regState.registeredTeamsMessageId = message.id;
+    saveJson(registrationsStatePath(eventKey), regState);
+  }
+}
+
+async function approveTeam(guild, eventKey, team, reviewerId) {
+  const regState = loadRegistrations(eventKey);
+  const now = new Date().toISOString();
+  for (const entry of Object.values(regState.entries)) {
+    if (entry.team === team && entry.status !== "rejected") {
+      entry.status = "approved";
+      entry.reviewedBy = reviewerId;
+      entry.updatedAt = now;
+    }
+  }
+  saveJson(registrationsStatePath(eventKey), regState);
+  await syncRegisteredTeamsChannel(guild, eventKey);
+}
+
+async function rejectTeam(guild, eventKey, team, reviewerId) {
+  const regState = loadRegistrations(eventKey);
+  const now = new Date().toISOString();
+  for (const entry of Object.values(regState.entries)) {
+    if (entry.team === team) {
+      entry.status = "rejected";
+      entry.reviewedBy = reviewerId;
+      entry.updatedAt = now;
+    }
+  }
+  saveJson(registrationsStatePath(eventKey), regState);
+  await syncRegisteredTeamsChannel(guild, eventKey);
+}
+
+async function postTeamReadyNotification(guild, eventKey, team) {
+  const channelId = process.env.EVENT_APPLICATIONS_CHANNEL_ID;
+  if (!channelId) return;
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel) return;
+
+  const regState = loadRegistrations(eventKey);
+  const members = Object.entries(regState.entries).filter(
+    ([, e]) => e.team === team && e.status !== "rejected"
+  );
+
+  const lines = members.map(([userId, e]) =>
+    e.ign ? `• <@${userId}> (IGN: ${e.ign})` : `• <@${userId}>`
+  );
+  const body =
+    `**Team "${team}" is ready for review — ${eventKey}**\n` +
+    `${members.length} player(s) registered:\n${lines.join("\n")}`;
+
+  const token = crypto.randomBytes(4).toString("hex");
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`reg:${eventKey}:${token}:approve`).setLabel("Approve").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`reg:${eventKey}:${token}:reject`).setLabel("Reject").setStyle(ButtonStyle.Danger)
+  );
+
+  const message = await channel.send({ content: body, components: [row] });
+
+  regState.pendingReviews[token] = { team, messageId: message.id };
+  saveJson(registrationsStatePath(eventKey), regState);
+}
+
 async function findThreadByName(mapChannel, threadName) {
   const active = await mapChannel.threads.fetchActive();
   const found  = active.threads.find((t) => t.name === threadName);
@@ -479,6 +686,8 @@ client.once("ready", async () => {
   await guild.commands.set([
     setupCommand,
     teardownCommand,
+    registerCommand,
+    registrationsCommand,
     syncMembersCommand,
     lobbyCommand,
     seasonCommand,
@@ -496,8 +705,35 @@ client.once("ready", async () => {
 // ---------------------------
 client.on("interactionCreate", async (interaction) => {
   try {
-    // Autocomplete for /record_result match field
+    // Autocomplete for /register team, /registrations approve|reject_team team, and
+    // /record_result match field
     if (interaction.isAutocomplete()) {
+      const cmd = interaction.commandName;
+      const isTeamAutocomplete =
+        cmd === "register" ||
+        (cmd === "registrations" && ["approve", "reject_team"].includes(interaction.options.getSubcommand()));
+
+      if (isTeamAutocomplete) {
+        let eventKey;
+        if (cmd === "register") {
+          if (!isWarboy(interaction) && !isStaff(interaction)) return interaction.respond([]);
+          eventKey = eventKeyForCategory(interaction.channel?.parentId);
+        } else {
+          if (!isStaff(interaction)) return interaction.respond([]);
+          eventKey = interaction.options.getString("event");
+        }
+        if (!eventKey) return interaction.respond([]);
+
+        const focused  = interaction.options.getFocused().toLowerCase();
+        const regState = loadRegistrations(eventKey);
+        const teams    = [...new Set(Object.values(regState.entries).map((e) => e.team))];
+        const choices  = teams
+          .filter((t) => t.toLowerCase().includes(focused))
+          .slice(0, 25)
+          .map((t) => ({ name: t.slice(0, 100), value: t }));
+        return interaction.respond(choices);
+      }
+
       if (!isStaff(interaction)) return interaction.respond([]);
       const isTest  = interaction.options.get("test")?.value ?? false;
       const focused = interaction.options.getFocused().toLowerCase();
@@ -508,9 +744,42 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.respond(choices);
     }
 
+    // Approve/Reject buttons on team-ready-for-review notifications
+    if (interaction.isButton()) {
+      const [prefix, eventKey, token, action] = interaction.customId.split(":");
+      if (prefix !== "reg") return;
+      if (!isStaff(interaction)) {
+        return interaction.reply({ content: "Staff only.", ephemeral: true });
+      }
+      await interaction.deferUpdate();
+
+      const regState = loadRegistrations(eventKey);
+      const pending  = regState.pendingReviews?.[token];
+      if (!pending) {
+        return interaction.followUp({ content: "Already handled.", ephemeral: true });
+      }
+
+      if (action === "approve") await approveTeam(interaction.guild, eventKey, pending.team, interaction.user.id);
+      else if (action === "reject") await rejectTeam(interaction.guild, eventKey, pending.team, interaction.user.id);
+
+      const freshState = loadRegistrations(eventKey);
+      delete freshState.pendingReviews[token];
+      saveJson(registrationsStatePath(eventKey), freshState);
+
+      const outcome = action === "approve" ? "✅ Approved" : "❌ Rejected";
+      return interaction.editReply({
+        content: `${interaction.message.content}\n\n${outcome} by <@${interaction.user.id}>`,
+        components: [],
+      });
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
-    if (!isStaff(interaction)) {
+    if (WARBOY_GATED_COMMANDS.has(interaction.commandName)) {
+      if (!isWarboy(interaction) && !isStaff(interaction)) {
+        return interaction.reply({ content: "Warboy role required.", ephemeral: true });
+      }
+    } else if (!isStaff(interaction)) {
       return interaction.reply({ content: "Staff only.", ephemeral: true });
     }
 
@@ -849,13 +1118,17 @@ client.on("interactionCreate", async (interaction) => {
 
     // ---- /setup event ----
     if (interaction.commandName === "setup" && interaction.options.getSubcommand() === "event") {
-      const eventKey  = interaction.options.getString("event");
-      const dryrun    = interaction.options.getBoolean("dryrun") ?? false;
+      const eventKey      = interaction.options.getString("event");
+      const maxTeamSizeIn = interaction.options.getInteger("max_team_size");
+      const dryrun        = interaction.options.getBoolean("dryrun") ?? false;
       const statePath = categoryStatePath(eventKey);
       const state     = loadJson(statePath, { categoryId: null, standingChannels: {} });
 
       const categoryName = eventKey;
       const categoryId   = await resolveEventCategory(guild, state, categoryName, dryrun);
+
+      if (maxTeamSizeIn != null) state.maxTeamSize = maxTeamSizeIn;
+      else if (state.maxTeamSize == null) state.maxTeamSize = 5;
 
       const planLines = [];
       let createdStanding = 0, reusedStanding = 0;
@@ -879,6 +1152,7 @@ client.on("interactionCreate", async (interaction) => {
             channel = await guild.channels.create({
               name: channelName, type: ChannelType.GuildText, parent: categoryId, reason: "Event creation",
               permissionOverwrites: standingChannelOverwrites(guild, channelName),
+              topic: STANDING_CHANNEL_TOPICS[channelName],
             });
             createdStanding++;
             state.standingChannels[channelName] = { id: channel.id };
@@ -895,6 +1169,9 @@ client.on("interactionCreate", async (interaction) => {
             standingChannelOverwrites(guild, channelName),
             "Event setup - enforce permissions"
           );
+          if (STANDING_CHANNEL_TOPICS[channelName] && channel.topic !== STANDING_CHANNEL_TOPICS[channelName]) {
+            await channel.edit({ topic: STANDING_CHANNEL_TOPICS[channelName] });
+          }
         }
       }
 
@@ -902,7 +1179,7 @@ client.on("interactionCreate", async (interaction) => {
       if (dryrun)
         return interaction.editReply(`Dry-run ✅\n\nPlan:\n${planLines.map((l) => `• ${l}`).join("\n")}`);
       return interaction.editReply(
-        `Done ✅\nCategory "${categoryName}" ready.\n` +
+        `Done ✅\nCategory "${categoryName}" ready. Max team size: ${state.maxTeamSize}.\n` +
         `Standing channels — created: ${createdStanding}, reused: ${reusedStanding}`
       );
     }
@@ -1159,6 +1436,135 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.editReply(
         `Teardown complete ✅\nDeleted ${deletedThreads} threads and ${deletedChannels} channels.`
       );
+    }
+
+    // ---- /register ----
+    if (interaction.commandName === "register") {
+      const eventKey = eventKeyForCategory(interaction.channel?.parentId);
+      if (!eventKey) {
+        return interaction.editReply("Please run this in an event's #registration channel.");
+      }
+
+      const team = interaction.options.getString("team");
+      const ign  = interaction.options.getString("ign");
+      const now  = new Date().toISOString();
+
+      const catState = loadJson(categoryStatePath(eventKey), { categoryId: null, standingChannels: {}, maxTeamSize: 5 });
+      const maxTeamSize = catState.maxTeamSize ?? 5;
+
+      const regState = loadRegistrations(eventKey);
+      const existing  = regState.entries[interaction.user.id];
+      // "Already on this team" means updating details (IGN, etc), not joining anew —
+      // switching teams (or a fresh registration) is subject to the capacity check below.
+      const alreadyOnThisTeam = existing?.team === team && existing?.status !== "rejected";
+
+      const otherMembersCount = Object.entries(regState.entries).filter(
+        ([userId, e]) => e.team === team && e.status !== "rejected" && userId !== interaction.user.id
+      ).length;
+
+      if (!alreadyOnThisTeam && otherMembersCount >= maxTeamSize) {
+        return interaction.editReply(`Team "${team}" is full (max ${maxTeamSize} players).`);
+      }
+
+      regState.entries[interaction.user.id] = {
+        team,
+        ign,
+        status: "pending",
+        registeredAt: existing?.registeredAt ?? now,
+        updatedAt: now,
+        reviewedBy: null,
+      };
+      saveJson(registrationsStatePath(eventKey), regState);
+
+      // Only notify when a genuinely new member pushes the team to exactly the cap —
+      // not on every re-registration of players already counted.
+      if (!alreadyOnThisTeam && otherMembersCount + 1 === maxTeamSize) {
+        await postTeamReadyNotification(guild, eventKey, team);
+      }
+
+      return interaction.editReply(`Registered for **${team}** — pending staff approval.`);
+    }
+
+    // ---- /registrations ----
+    if (interaction.commandName === "registrations") {
+      const sub      = interaction.options.getSubcommand();
+      const eventKey = interaction.options.getString("event");
+
+      if (sub === "list") {
+        const regState = loadRegistrations(eventKey);
+        const byTeam = {};
+        for (const [userId, e] of Object.entries(regState.entries)) {
+          (byTeam[e.team] ||= []).push({ userId, ...e });
+        }
+        const teamNames = Object.keys(byTeam).sort((a, b) => a.localeCompare(b));
+        if (teamNames.length === 0) return interaction.editReply(`No registrations for "${eventKey}" yet.`);
+        const lines = teamNames.map((team) => {
+          const members = byTeam[team]
+            .map((m) => `  - <@${m.userId}> (IGN: ${m.ign}) — ${m.status}`)
+            .join("\n");
+          return `**${team}**\n${members}`;
+        });
+        return interaction.editReply(lines.join("\n\n"));
+      }
+
+      if (sub === "approve") {
+        const team = interaction.options.getString("team");
+        await approveTeam(guild, eventKey, team, interaction.user.id);
+        return interaction.editReply(`Approved team "${team}" for "${eventKey}".`);
+      }
+
+      if (sub === "reject_team") {
+        const team = interaction.options.getString("team");
+        await rejectTeam(guild, eventKey, team, interaction.user.id);
+        return interaction.editReply(`Rejected team "${team}" for "${eventKey}".`);
+      }
+
+      if (sub === "approve_player") {
+        const player = interaction.options.getUser("player");
+        const regState = loadRegistrations(eventKey);
+        const entry = regState.entries[player.id];
+        if (!entry) return interaction.editReply(`No registration found for ${player.tag}.`);
+        entry.status = "approved";
+        entry.reviewedBy = interaction.user.id;
+        entry.updatedAt = new Date().toISOString();
+        saveJson(registrationsStatePath(eventKey), regState);
+        await syncRegisteredTeamsChannel(guild, eventKey);
+        return interaction.editReply(`Approved ${player.tag} for "${eventKey}".`);
+      }
+
+      if (sub === "reject") {
+        const player = interaction.options.getUser("player");
+        const reason = interaction.options.getString("reason");
+        const regState = loadRegistrations(eventKey);
+        const entry = regState.entries[player.id];
+        if (!entry) return interaction.editReply(`No registration found for ${player.tag}.`);
+        entry.status = "rejected";
+        entry.reviewedBy = interaction.user.id;
+        entry.updatedAt = new Date().toISOString();
+        saveJson(registrationsStatePath(eventKey), regState);
+        await syncRegisteredTeamsChannel(guild, eventKey);
+        return interaction.editReply(
+          `Rejected ${player.tag} for "${eventKey}".${reason ? ` Reason: ${reason}` : ""}`
+        );
+      }
+
+      if (sub === "export") {
+        const regState = loadRegistrations(eventKey);
+        const approved = Object.entries(regState.entries).filter(([, e]) => e.status === "approved");
+        const byTeam = {};
+        for (const [userId, e] of approved) {
+          (byTeam[e.team] ||= []).push({ userId, ign: e.ign });
+        }
+        const teamNames = Object.keys(byTeam).sort((a, b) => a.localeCompare(b));
+        if (teamNames.length === 0) return interaction.editReply(`No approved teams for "${eventKey}" yet.`);
+        const yamlLines = teamNames.map((team) => {
+          const players = byTeam[team]
+            .map((p) => `    - "${p.userId}"  # ${p.ign}`)
+            .join("\n");
+          return `- teamName: "${team}"\n  players:\n${players}`;
+        });
+        return interaction.editReply(`\`\`\`yaml\n${yamlLines.join("\n\n")}\n\`\`\``);
+      }
     }
 
   } catch (err) {

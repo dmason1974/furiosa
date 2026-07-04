@@ -8,9 +8,11 @@ It is safe, repeatable, and staff-only.
 
 ## Who Can Use This Bot
 
-Only users with the Event Staff role can run commands.
+Only users with the Event Staff role can run commands — with one exception:
+`/register` can be run by anyone with the **Warboy** role (the server's
+general member role), so players can self-register without staff access.
 
-If you do not have the role, the bot will ignore the command.
+If you do not have the required role, the bot will ignore the command.
 
 ---
 
@@ -73,6 +75,42 @@ before any maps are set up:
 Add `dryrun:true` first if you want to preview what would be created without
 making changes. Safe to re-run — existing channels are reused, nothing is
 duplicated.
+
+---
+
+### Step 1.5: Player Registration
+
+Once the category exists, players can self-register in the event's
+`#registration` channel (its topic explains this too):
+
+`/register team:"Elite Corps" ign:YourIGN`
+
+- Anyone with the **Warboy** role can run this — it must be run inside that
+  event's `#registration` channel, since the event is inferred from which
+  category the channel belongs to.
+- The `team` field autocompletes against team names already registered for
+  that event, but you can also type a brand-new name if you're the first on
+  your team.
+- Re-running `/register` updates your own entry (never creates a duplicate),
+  and resets it back to pending if it had already been approved.
+- Each event has a max players per team (`/setup event`'s `max_team_size`,
+  default 5). Once a team hits that cap, further registrations are rejected
+  with a "team is full" message, and staff get a notification with
+  Approve/Reject buttons in the applications channel.
+
+Staff review registrations with:
+
+- `/registrations list event:bop` — see everything, grouped by team
+- `/registrations approve event:bop team:"Elite Corps"` — bulk-approve a team
+- `/registrations reject_team event:bop team:"Elite Corps"` — bulk-reject a team
+- `/registrations approve_player event:bop player:@user` / `reject` — single-player overrides
+- `/registrations export event:bop` — dumps approved teams as a YAML snippet
+  ready to paste into that round's `config.yml` once zone/map allocation is
+  decided, so you don't have to re-type every player's Discord ID by hand
+
+Approved registrations are automatically compiled into the `#registered-teams`
+channel — that message updates itself as approvals/rejections happen, it's
+never a manual export step.
 
 ---
 
@@ -196,11 +234,12 @@ This is informational and for audit purposes.
 ## Recommended Workflow
 
 1. Run `/setup event` to create the category and standing channels
-2. Update YAML and Markdown for the round
-3. Run `/setup maps` with dryrun
-4. Run `/setup maps`
-5. Event runs
-6. Run `/teardown` when finished
+2. Players self-register with `/register`; staff approve teams with `/registrations approve`
+3. `/registrations export` once registration closes, paste into the round's YAML with zone/map allocation
+4. Run `/setup maps` with dryrun
+5. Run `/setup maps`
+6. Event runs
+7. Run `/teardown` when finished
 
 ---
 

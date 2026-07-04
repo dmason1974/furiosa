@@ -53,15 +53,18 @@ src/config/
   reverted it because it broke the "config directory = what's in git"
   invariant.
 - `data/<event>/category.json` — event-level state (`categoryId`,
-  `standingChannels`), written by `/setup event`. Gitignored.
+  `standingChannels`, `maxTeamSize`), written by `/setup event`. Gitignored.
 - `data/<event>/[<round>/]state.json` — round-level state (`channels`,
   `threads`), written by `/setup maps`. Gitignored.
-- Both are **not backed up**. If the Lightsail instance is ever lost again,
-  this state is lost with it. Partial self-healing exists: `resolveEventCategory`
-  falls back to searching Discord by category *name* if there's no cached ID,
-  so `/setup event` re-run after a rebuild will re-discover an existing
-  category. There's no equivalent name-based recovery for round-level map
-  channels/threads.
+- `data/<event>/registrations.json` — player self-registration state
+  (`entries`, `registeredTeamsMessageId`, `pendingReviews`), written by
+  `/register`/`/registrations`. Gitignored.
+- None of these are **backed up**. If the Lightsail instance is ever lost
+  again, this state is lost with it. Partial self-healing exists:
+  `resolveEventCategory` falls back to searching Discord by category *name*
+  if there's no cached ID, so `/setup event` re-run after a rebuild will
+  re-discover an existing category. There's no equivalent name-based
+  recovery for round-level map channels/threads or for registrations.
 
 ### Commands
 
@@ -76,6 +79,19 @@ src/config/
 - `/teardown event event:<key> [dryrun]` — deletes the category + standing
   channels and clears `category.json`. Warns (doesn't block) if any round
   under that event still has tracked map channels/threads.
+- `/register team:<name> ign:<name>` — player self-registration for an event,
+  usable by anyone with the **Warboy** role (not staff-only, not open to
+  everyone). Must be run inside that event's `#registration` channel — the
+  event is inferred from the channel's parent category name
+  (`eventKeyForCategory`), not typed. Enforces `maxTeamSize` (set via
+  `/setup event`'s `max_team_size` option, default 5); posts an Approve/Reject
+  button notification to `EVENT_APPLICATIONS_CHANNEL_ID` when a team first
+  reaches capacity.
+- `/registrations list|approve|approve_player|reject|reject_team|export
+  event:<key>` — staff-only. Nothing reaches `#registered-teams` without
+  going through `approve`/`approve_player` (bulk-per-team is the primary
+  path). `export` dumps approved teams as a YAML snippet for pasting into a
+  round's `config.yml` once zone/map allocation is decided.
 - `/lobby`, `/matchmake`, `/create_match`, `/record_result`, `/season`,
   `/league` — matchmaking/ELO system, **WIP, not load-bearing**. Backed by
   Postgres (`src/db.js`, `src/elo.js`). See "Known constraints" below.
@@ -112,10 +128,16 @@ src/config/
   their own way to resolve a category (mirroring `/setup event`'s model)
   instead of the removed `EVENT_CATEGORY_ID`. Not started.
 - **Runtime state durability**: `data/` is unbacked-up and self-healing only
-  for the category (by name lookup), not for round-level map channels/threads.
-  Possible fixes, not implemented: periodic sync of `data/` to S3, or move
-  this tracking state into the existing RDS Postgres instance instead of
-  local JSON files.
+  for the category (by name lookup), not for round-level map channels/threads
+  or registrations. Possible fixes, not implemented: periodic sync of `data/`
+  to S3, or move this tracking state into the existing RDS Postgres instance
+  instead of local JSON files.
+- **Registrations: JSON now, DB later.** `/register`/`/registrations` are
+  deliberately built on `data/<event>/registrations.json` for a first
+  iteration — fast, zero new infra, consistent with the rest of the bot's
+  state model. A future iteration should likely move this to a proper
+  database (the existing eu-west-2 RDS instance is the obvious candidate,
+  though it's currently WIP/matchmaking-only). Not started.
 - **Duplicate-looking configs**: `src/config/bop/` and
   `src/config/balance-of-power/` both have `event.name: "Balance of Power"` —
   never reconciled/deduplicated this session. Worth checking with the user
