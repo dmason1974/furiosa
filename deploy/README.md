@@ -96,7 +96,7 @@ never touch an existing `.env`.
 
 ## Known risks / follow-ups (not addressed by this setup)
 
-- **`src/config/<event>/category.json` and `src/config/<event>[/<round>]/state.json` are local-only and not backed up.** These files track the event's category/standing channels and each round's map channels/threads, for `/setup maps` and `/teardown`. They're gitignored by design (instance-specific runtime state), but that also means if this box is ever lost again, that tracking state is lost with it — the same failure mode as the previous incident. A future fix could sync `src/config/` state files to S3 on a schedule, or move this state into the existing RDS Postgres instance.
+- **`data/<event>/category.json` and `data/<event>[/<round>]/state.json` are local-only and not backed up.** These files track the event's category/standing channels and each round's map channels/threads, for `/setup maps` and `/teardown`. They live outside `src/config/` deliberately (config stays a pure, git-managed tree; `data/` is the bot's own generated state) and are gitignored, but that also means if this box is ever lost again, that tracking state is lost with it — the same failure mode as the previous incident. A future fix could sync `data/` to S3 on a schedule, or move this state into the existing RDS Postgres instance.
 - **`Restart=on-failure`** won't restart the service on a clean exit (e.g. an
   unhandled rejection handler that calls `process.exit(0)`). Switch to
   `Restart=always` in `furiosa.service` if that turns out to matter.

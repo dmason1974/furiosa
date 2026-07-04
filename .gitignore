@@ -17,9 +17,7 @@ pnpm-debug.log*
 # --------------------
 # Runtime state (DO NOT COMMIT)
 # --------------------
-src/config/*/category.json
-src/config/*/state.json
-src/config/*/*/state.json
+data/
 
 # --------------------
 # Logs

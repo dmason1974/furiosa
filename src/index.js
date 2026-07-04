@@ -47,6 +47,9 @@ function saveJson(filePath, data) {
 
 // An event's category + standing channels are shared across all its rounds.
 // A round (if the event has one) holds its own map channels/threads.
+// Config (src/config/) is pure, git-managed content; runtime state the bot
+// writes itself (category/channel IDs) lives in a parallel data/ tree so the
+// two never mix.
 function eventDir(eventKey) {
   return path.join(__dirname, "config", eventKey);
 }
@@ -55,12 +58,20 @@ function roundDir(eventKey, round) {
   return round ? path.join(eventDir(eventKey), round) : eventDir(eventKey);
 }
 
+function eventDataDir(eventKey) {
+  return path.join(process.cwd(), "data", eventKey);
+}
+
+function roundDataDir(eventKey, round) {
+  return round ? path.join(eventDataDir(eventKey), round) : eventDataDir(eventKey);
+}
+
 function categoryStatePath(eventKey) {
-  return path.join(eventDir(eventKey), "category.json");
+  return path.join(eventDataDir(eventKey), "category.json");
 }
 
 function roundStatePath(eventKey, round) {
-  return path.join(roundDir(eventKey, round), "state.json");
+  return path.join(roundDataDir(eventKey, round), "state.json");
 }
 
 function renderTemplate(template, vars) {
