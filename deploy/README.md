@@ -10,7 +10,20 @@ This directory holds the artifacts needed to (re)build that box from scratch.
 
 ## A. Lightsail console (manual)
 
-1. Create instance: **OS Only → Ubuntu 22.04 LTS**, region **us-east-1**.
+1. Create instance: **OS Only → Ubuntu 24.04 LTS (Noble)**, region **us-east-1**.
+
+   **Optional — launch script:** Lightsail's create-instance page has an
+   "Add launch script" field (runs once via cloud-init on first boot, as
+   root). Paste this in to have the box bootstrap itself instead of doing
+   step 8 by hand:
+   ```bash
+   #!/bin/bash
+   curl -fsSL https://raw.githubusercontent.com/dmason1974/furiosa/main/deploy/bootstrap.sh | bash
+   ```
+   This installs Node, creates the `furiosa` user, clones the repo, creates a
+   placeholder `.env` (no real secrets yet), installs deps, and starts the
+   systemd service. It'll crash-loop until you drop in a real `.env` (step 9)
+   — that's expected.
 2. Size: use the **1 GB RAM** plan or larger. The previous instance was on
    512 MB and went unresponsive (likely OOM) — too tight for Node + a
    long-lived process with a Postgres connection pool.
@@ -43,18 +56,21 @@ This directory holds the artifacts needed to (re)build that box from scratch.
    in-progress matchmaking/ELO commands (`/lobby`, `/matchmake`,
    `/create_match`, `/record_result`, `/season`, `/league`).
 
-8. Get the repo onto the box once, manually, so `bootstrap.sh` exists to run:
+8. **Skip this step if you used the launch script in A.1** — the repo is
+   already cloned. Otherwise, get it onto the box once, manually, so
+   `bootstrap.sh` exists to run:
    ```
    sudo git clone https://github.com/dmason1974/furiosa.git /opt/furiosa
    ```
-9. Copy your filled-in env file directly to `/opt/furiosa/.env` **before**
-   running bootstrap, so it sees an existing `.env` and leaves it alone:
+9. Copy your filled-in env file directly to `/opt/furiosa/.env`, overwriting
+   the launch script's placeholder if you used one:
    ```
    scp -i <lightsail-key>.pem local-real.env ubuntu@<static-ip>:/tmp/furiosa.env
    sudo mv /tmp/furiosa.env /opt/furiosa/.env
    sudo chmod 600 /opt/furiosa/.env
    ```
-10. Run bootstrap:
+10. Run bootstrap (or just `sudo systemctl restart furiosa` if the launch
+    script already ran it and the only thing that changed is `.env`):
     ```
     sudo bash /opt/furiosa/deploy/bootstrap.sh
     ```
