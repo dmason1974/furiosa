@@ -21,6 +21,9 @@ const elo = require("./elo");
 // Helpers
 // ---------------------------
 const STANDING_CHANNEL_NAMES = ["event-chat", "rules", "registered-teams", "registration"];
+// Standing channels where @everyone may send messages; all others are view-only
+// (e.g. "registration" is posted to only via its apply panel component, not free text).
+const STANDING_CHANNEL_OPEN_POST = new Set(["event-chat"]);
 
 function pad2(n) { return String(n).padStart(2, "0"); }
 
@@ -379,6 +382,28 @@ async function assertBotAccess(guild, categoryId) {
   return category;
 }
 
+// @everyone can view the category/standing channels, but can't create/delete channels —
+// that stays admin-only via the guild's own role permissions.
+function categoryOverwrites(guild) {
+  return [
+    {
+      id: guild.roles.everyone.id,
+      allow: [PermissionsBitField.Flags.ViewChannel],
+      deny: [PermissionsBitField.Flags.ManageChannels],
+    },
+  ];
+}
+
+function standingChannelOverwrites(guild, channelName) {
+  return [
+    {
+      id: guild.roles.everyone.id,
+      allow: [PermissionsBitField.Flags.ViewChannel],
+      deny: STANDING_CHANNEL_OPEN_POST.has(channelName) ? [] : [PermissionsBitField.Flags.SendMessages],
+    },
+  ];
+}
+
 async function resolveEventCategory(guild, state, categoryName, dryrun) {
   let category = state.categoryId
     ? await guild.channels.fetch(state.categoryId).catch(() => null)
@@ -394,7 +419,12 @@ async function resolveEventCategory(guild, state, categoryName, dryrun) {
   if (!category && !dryrun) {
     category = await guild.channels.create({
       name: categoryName, type: ChannelType.GuildCategory, reason: "Event setup",
+      permissionOverwrites: categoryOverwrites(guild),
     });
+  }
+
+  if (category && !dryrun) {
+    await category.permissionOverwrites.set(categoryOverwrites(guild), "Event setup - enforce permissions");
   }
 
   if (category) state.categoryId = category.id;
@@ -848,6 +878,7 @@ client.on("interactionCreate", async (interaction) => {
           } else {
             channel = await guild.channels.create({
               name: channelName, type: ChannelType.GuildText, parent: categoryId, reason: "Event creation",
+              permissionOverwrites: standingChannelOverwrites(guild, channelName),
             });
             createdStanding++;
             state.standingChannels[channelName] = { id: channel.id };
@@ -857,6 +888,13 @@ client.on("interactionCreate", async (interaction) => {
           reusedStanding++;
           state.standingChannels[channelName] = { id: channel.id };
           planLines.push(`  - channel #${channelName}: ready`);
+        }
+
+        if (channel && !dryrun) {
+          await channel.permissionOverwrites.set(
+            standingChannelOverwrites(guild, channelName),
+            "Event setup - enforce permissions"
+          );
         }
       }
 
