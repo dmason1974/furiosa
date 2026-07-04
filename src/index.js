@@ -32,7 +32,8 @@ const STANDING_CHANNEL_TOPICS = {
   registration:
     "Register here: /register team:<name> ign:<name>\n" +
     "One entry per player — re-running updates it.\n" +
-    "Staff approve teams before they appear in #registered-teams.",
+    "Staff approve teams before they appear in #registered-teams.\n" +
+    "/unregister to withdraw your registration.",
 };
 const WARBOY_GATED_COMMANDS = new Set(["register", "unregister"]);
 
