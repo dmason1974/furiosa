@@ -97,6 +97,9 @@ Once the category exists, players can self-register in the event's
   default 5). Once a team hits that cap, further registrations are rejected
   with a "team is full" message, and staff get a notification with
   Approve/Reject buttons in the applications channel.
+- `/unregister` withdraws your own registration for that event (also run
+  inside `#registration`). If you'd already been approved, `#registered-teams`
+  updates immediately to remove you.
 
 Staff review registrations with:
 

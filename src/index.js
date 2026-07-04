@@ -34,7 +34,7 @@ const STANDING_CHANNEL_TOPICS = {
     "One entry per player — re-running updates it.\n" +
     "Staff approve teams before they appear in #registered-teams.",
 };
-const WARBOY_GATED_COMMANDS = new Set(["register"]);
+const WARBOY_GATED_COMMANDS = new Set(["register", "unregister"]);
 
 function pad2(n) { return String(n).padStart(2, "0"); }
 
@@ -289,6 +289,10 @@ const registerCommand = new SlashCommandBuilder()
   .addStringOption((o) =>
     o.setName("ign").setDescription("Your in-game name").setRequired(true)
   );
+
+const unregisterCommand = new SlashCommandBuilder()
+  .setName("unregister")
+  .setDescription("Withdraw your own registration for this event (run in #registration)");
 
 const registrationsCommand = new SlashCommandBuilder()
   .setName("registrations")
@@ -703,6 +707,7 @@ client.once("ready", async () => {
     setupCommand,
     teardownCommand,
     registerCommand,
+    unregisterCommand,
     registrationsCommand,
     syncMembersCommand,
     lobbyCommand,
@@ -1499,6 +1504,29 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       return interaction.editReply(`Registered for **${team}** — pending staff approval.`);
+    }
+
+    // ---- /unregister ----
+    if (interaction.commandName === "unregister") {
+      const eventKey = eventKeyForCategory(interaction.channel?.parentId);
+      if (!eventKey) {
+        return interaction.editReply("Please run this in an event's #registration channel.");
+      }
+
+      const regState = loadRegistrations(eventKey);
+      const existing = regState.entries[interaction.user.id];
+      if (!existing) {
+        return interaction.editReply("You're not registered for this event.");
+      }
+
+      const wasApproved = existing.status === "approved";
+      const team = existing.team;
+      delete regState.entries[interaction.user.id];
+      saveJson(registrationsStatePath(eventKey), regState);
+
+      if (wasApproved) await syncRegisteredTeamsChannel(guild, eventKey);
+
+      return interaction.editReply(`Unregistered from **${team}**.`);
     }
 
     // ---- /registrations ----
