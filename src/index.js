@@ -501,13 +501,26 @@ function categoryOverwrites(guild) {
 }
 
 function standingChannelOverwrites(guild, channelName) {
-  return [
+  const overwrites = [
     {
       id: guild.roles.everyone.id,
       allow: [PermissionsBitField.Flags.ViewChannel],
       deny: STANDING_CHANNEL_OPEN_POST.has(channelName) ? [] : [PermissionsBitField.Flags.SendMessages],
     },
   ];
+
+  // Slash commands require Send Messages in the channel they're run in, so
+  // Warboys need it allowed in #registration specifically to run /register,
+  // even though @everyone (incl. Warboys) is denied free-text posting there.
+  const warboyRoleId = process.env.WARBOY_ROLE_ID;
+  if (channelName === "registration" && warboyRoleId) {
+    overwrites.push({
+      id: warboyRoleId,
+      allow: [PermissionsBitField.Flags.SendMessages],
+    });
+  }
+
+  return overwrites;
 }
 
 async function resolveEventCategory(guild, state, categoryName, dryrun) {
