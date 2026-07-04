@@ -35,6 +35,12 @@ const STANDING_CHANNEL_TOPICS = {
     "Staff approve teams before they appear in #registered-teams.\n" +
     "/unregister to withdraw your registration.",
 };
+// Slash commands aren't rate-limited by slowmode (only regular messages are),
+// so this discourages free-text chatter now that Warboys have Send Messages
+// there, without blocking /register or /unregister.
+const STANDING_CHANNEL_SLOWMODE = {
+  registration: 3600, // 1 hour, in seconds
+};
 const WARBOY_GATED_COMMANDS = new Set(["register", "unregister"]);
 
 function pad2(n) { return String(n).padStart(2, "0"); }
@@ -1176,6 +1182,7 @@ client.on("interactionCreate", async (interaction) => {
               name: channelName, type: ChannelType.GuildText, parent: categoryId, reason: "Event creation",
               permissionOverwrites: standingChannelOverwrites(guild, channelName),
               topic: STANDING_CHANNEL_TOPICS[channelName],
+              rateLimitPerUser: STANDING_CHANNEL_SLOWMODE[channelName],
             });
             createdStanding++;
             state.standingChannels[channelName] = { id: channel.id };
@@ -1194,6 +1201,12 @@ client.on("interactionCreate", async (interaction) => {
           );
           if (STANDING_CHANNEL_TOPICS[channelName] && channel.topic !== STANDING_CHANNEL_TOPICS[channelName]) {
             await channel.edit({ topic: STANDING_CHANNEL_TOPICS[channelName] });
+          }
+          if (
+            STANDING_CHANNEL_SLOWMODE[channelName] != null &&
+            channel.rateLimitPerUser !== STANDING_CHANNEL_SLOWMODE[channelName]
+          ) {
+            await channel.edit({ rateLimitPerUser: STANDING_CHANNEL_SLOWMODE[channelName] });
           }
         }
       }
