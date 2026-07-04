@@ -30,10 +30,9 @@ const STANDING_CHANNEL_NAMES = ["event-chat", "rules", "registered-teams", "regi
 const STANDING_CHANNEL_OPEN_POST = new Set(["event-chat"]);
 const STANDING_CHANNEL_TOPICS = {
   registration:
-    "Register here: /register team:<name> ign:<name>\n" +
-    "One entry per player — re-running updates it.\n" +
-    "Staff approve teams before they appear in #registered-teams.\n" +
-    "/unregister to withdraw your registration.",
+    "/register team:<name> ign:<name> — register your team (re-run to update; one entry per player)\n" +
+    "/unregister — withdraw your registration\n" +
+    "Staff must approve your team before it appears in #registered-teams",
 };
 // Slash commands aren't rate-limited by slowmode (only regular messages are),
 // so this discourages free-text chatter now that Warboys have Send Messages
