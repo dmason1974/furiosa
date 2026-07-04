@@ -29,26 +29,59 @@ For a given event config, Furiosa will:
 
 ## Event Configuration
 
-Each event is defined by two files:
+Each event is a directory under `src/config/`, named after the event itself —
+that directory name is what you type into every command's `event:` option,
+and it's also the exact name the bot gives the event's Discord category.
 
-- `event-key.yml` – structure, maps, teams, players
-- `event-key.thread.md` – message posted into each team thread
+An event with a single round keeps its files directly in that directory:
 
-The event key is used in commands.
+```
+src/config/bop/
+  config.yml    – structure, maps, teams, players
+  thread.md     – message posted into each team thread
+```
 
-Example:
-`bt-r1-flagship`
+An event with multiple rounds nests each round in its own subdirectory
+instead:
+
+```
+src/config/beyond-thunderdome/
+  r1-flagship/
+    config.yml
+    thread.md
+  r2-homeland/
+    config.yml
+    thread.md
+```
+
+The category and standing channels belong to the **event** and are shared
+across all its rounds. Map channels and threads belong to a **round** (or to
+the event directly, if it has no rounds).
 
 ---
 
 ## Creating an Event
 
-### Step 1: Dry Run (Always Do This First)
+### Step 1: Create the Category
+
+Every event needs its category and standing channels
+(`event-chat`, `rules`, `registered-teams`, `registration`) created once,
+before any maps are set up:
+
+`/setup event event:bop`
+
+Add `dryrun:true` first if you want to preview what would be created without
+making changes. Safe to re-run — existing channels are reused, nothing is
+duplicated.
+
+---
+
+### Step 2: Dry Run the Maps (Always Do This Next)
 
 Shows what would be created without making any changes.
 
-Command:
-`/setup config: bt-r1-flagship dryrun:true`
+- Single-round event: `/setup maps event:bop dryrun:true`
+- Multi-round event: `/setup maps event:beyond-thunderdome round:r1-flagship dryrun:true`
 
 Use this to:
 - Validate the YAML
@@ -57,46 +90,37 @@ Use this to:
 
 ---
 
-### Step 2: Create Channels and Threads
+### Step 3: Create Map Channels and Threads
 
-Once the dry run looks correct:
+Once the dry run looks correct, drop `dryrun:true`:
 
-Command:
-`/setup config: bt-r1-flagship`
+- Single-round event: `/setup maps event:bop`
+- Multi-round event: `/setup maps event:beyond-thunderdome round:r1-flagship`
 
 This will:
-- Create map channels (e.g. `bt-r1-flagship-map01`)
+- Create map channels (e.g. `bop-map01`, or `beyond-thunderdome-r1-flagship-map01`)
 - Create private team threads
 - Add players to their threads
 - Post the thread message
 - Save a state file for teardown
 
-You can safely re-run this command. No duplicates will be created.
+You can safely re-run this command. No duplicates will be created. If the
+category hasn't been created yet, it'll tell you to run `/setup event` first.
 
 ---
 
-## Re-running Setup
+## Teardown (Remove a Round's Map Channels)
 
-You may re-run setup at any time:
-
-`/setup config: bt-r1-flagship`
-
-The bot is idempotent:
-- Existing channels are reused
-- Existing threads are reused
-- Nothing is duplicated
-
-This is safe.
-
----
-
-## Teardown (Remove an Event)
+`/teardown` only removes a round's map channels and threads — it never
+touches the event's category or standing channels, since those usually hold
+history worth keeping across rounds.
 
 ### Dry Run Teardown
 
 See what would be deleted:
 
-`/teardown config: bt-r1-flagship dryrun:true`
+- `/teardown event:bop dryrun:true`
+- `/teardown event:beyond-thunderdome round:r1-flagship dryrun:true`
 
 ---
 
@@ -104,7 +128,7 @@ See what would be deleted:
 
 Deletes channels and threads created by the bot, but keeps the state file.
 
-`/teardown config: bt-r1-flagship`
+`/teardown event:bop`
 
 Recommended if you may want to inspect or recreate later.
 
@@ -114,7 +138,7 @@ Recommended if you may want to inspect or recreate later.
 
 Deletes everything and removes the state file.
 
-`/teardown config: bt-r1-flagship delete_state:true`
+`/teardown event:bop delete_state:true`
 
 Use this only when you are sure you want a clean slate.
 
@@ -155,11 +179,12 @@ This is informational and for audit purposes.
 
 ## Recommended Workflow
 
-1. Update YAML and Markdown
-2. Run setup with dryrun
-3. Run setup
-4. Event runs
-5. Run teardown when finished
+1. Run `/setup event` to create the category and standing channels
+2. Update YAML and Markdown for the round
+3. Run `/setup maps` with dryrun
+4. Run `/setup maps`
+5. Event runs
+6. Run `/teardown` when finished
 
 ---
 

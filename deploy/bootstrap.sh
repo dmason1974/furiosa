@@ -52,9 +52,6 @@ if [ ! -f "$APP_DIR/.env" ]; then
   echo "!!!   sudo systemctl restart furiosa"
 fi
 
-# --- Runtime data dir (gitignored, not created by git clone) ---
-sudo -u "$APP_USER" mkdir -p "$APP_DIR/data"
-
 # --- Dependencies ---
 echo "Installing dependencies..."
 sudo -u "$APP_USER" npm ci --omit=dev --prefix "$APP_DIR"

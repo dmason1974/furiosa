@@ -20,6 +20,8 @@ const elo = require("./elo");
 // ---------------------------
 // Helpers
 // ---------------------------
+const STANDING_CHANNEL_NAMES = ["event-chat", "rules", "registered-teams", "registration"];
+
 function pad2(n) { return String(n).padStart(2, "0"); }
 
 function slugify(s) {
@@ -33,14 +35,32 @@ function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
 }
 
-function loadState(statePath) {
-  if (!fs.existsSync(statePath)) return { channels: {}, threads: {} };
-  return JSON.parse(fs.readFileSync(statePath, "utf8"));
+function loadJson(filePath, defaults) {
+  if (!fs.existsSync(filePath)) return { ...defaults };
+  return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
-function saveState(statePath, state) {
-  ensureDir(path.dirname(statePath));
-  fs.writeFileSync(statePath, JSON.stringify(state, null, 2), "utf8");
+function saveJson(filePath, data) {
+  ensureDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
+}
+
+// An event's category + standing channels are shared across all its rounds.
+// A round (if the event has one) holds its own map channels/threads.
+function eventDir(eventKey) {
+  return path.join(__dirname, "config", eventKey);
+}
+
+function roundDir(eventKey, round) {
+  return round ? path.join(eventDir(eventKey), round) : eventDir(eventKey);
+}
+
+function categoryStatePath(eventKey) {
+  return path.join(eventDir(eventKey), "category.json");
+}
+
+function roundStatePath(eventKey, round) {
+  return path.join(roundDir(eventKey, round), "state.json");
 }
 
 function renderTemplate(template, vars) {
@@ -150,17 +170,33 @@ const client = new Client({
 // ---------------------------
 const setupCommand = new SlashCommandBuilder()
   .setName("setup")
-  .setDescription("Create map channels and private team threads from YAML config")
-  .addStringOption((o) =>
-    o.setName("config").setDescription("Config file base name in src/config (without extension)").setRequired(true)
+  .setDescription("Set up an event's Discord structure")
+  .addSubcommand((s) =>
+    s.setName("event").setDescription("Create the event's category and standing channels")
+      .addStringOption((o) =>
+        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+      )
+      .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without creating anything"))
   )
-  .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without creating anything"));
+  .addSubcommand((s) =>
+    s.setName("maps").setDescription("Create map channels and private team threads from YAML config")
+      .addStringOption((o) =>
+        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+      )
+      .addStringOption((o) =>
+        o.setName("round").setDescription("Round subdirectory name (omit if the event has no rounds)")
+      )
+      .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without creating anything"))
+  );
 
 const teardownCommand = new SlashCommandBuilder()
   .setName("teardown")
-  .setDescription("Delete channels/threads created by /setup")
+  .setDescription("Delete channels/threads created by /setup maps")
   .addStringOption((o) =>
-    o.setName("config").setDescription("Config file base name in src/config (without extension)").setRequired(true)
+    o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+  )
+  .addStringOption((o) =>
+    o.setName("round").setDescription("Round subdirectory name (omit if the event has no rounds)")
   )
   .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without deleting anything"))
   .addBooleanOption((o) => o.setName("delete_state").setDescription("Delete state file after teardown"));
@@ -306,6 +342,28 @@ async function assertBotAccess(guild, categoryId) {
   if (missingPerms.length > 0)
     throw new Error(`Bot missing permissions on category: ${missingPerms.join(", ")}`);
   return category;
+}
+
+async function resolveEventCategory(guild, state, categoryName, dryrun) {
+  let category = state.categoryId
+    ? await guild.channels.fetch(state.categoryId).catch(() => null)
+    : null;
+
+  if (!category) {
+    const channels = await guild.channels.fetch();
+    category = channels.find(
+      (c) => c && c.type === ChannelType.GuildCategory && c.name === categoryName
+    );
+  }
+
+  if (!category && !dryrun) {
+    category = await guild.channels.create({
+      name: categoryName, type: ChannelType.GuildCategory, reason: "Event setup",
+    });
+  }
+
+  if (category) state.categoryId = category.id;
+  return category ? category.id : null;
 }
 
 async function addPlayersToThread(guild, thread, playerIds) {
@@ -724,15 +782,65 @@ client.on("interactionCreate", async (interaction) => {
       );
     }
 
-    // ---- /setup ----
-    if (interaction.commandName === "setup") {
-      const categoryId  = process.env.EVENT_CATEGORY_ID;
-      if (!categoryId) throw new Error("Missing EVENT_CATEGORY_ID in .env");
+    // ---- /setup event ----
+    if (interaction.commandName === "setup" && interaction.options.getSubcommand() === "event") {
+      const eventKey  = interaction.options.getString("event");
+      const dryrun    = interaction.options.getBoolean("dryrun") ?? false;
+      const statePath = categoryStatePath(eventKey);
+      const state     = loadJson(statePath, { categoryId: null, standingChannels: {} });
 
-      const configBase   = interaction.options.getString("config");
+      const categoryName = eventKey;
+      const categoryId   = await resolveEventCategory(guild, state, categoryName, dryrun);
+
+      const planLines = [];
+      let createdStanding = 0, reusedStanding = 0;
+
+      if (!categoryId) {
+        planLines.push(`Category "${categoryName}": would create`);
+      } else {
+        await assertBotAccess(guild, categoryId);
+        planLines.push(`Category "${categoryName}": ready`);
+      }
+
+      for (const channelName of STANDING_CHANNEL_NAMES) {
+        let channelId = state.standingChannels?.[channelName]?.id;
+        let channel   = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
+        if (!channel && categoryId) channel = await findChannelByNameInCategory(guild, categoryId, channelName);
+
+        if (!channel) {
+          if (dryrun) {
+            planLines.push(`  - would create channel #${channelName}`);
+          } else {
+            channel = await guild.channels.create({
+              name: channelName, type: ChannelType.GuildText, parent: categoryId, reason: "Event creation",
+            });
+            createdStanding++;
+            state.standingChannels[channelName] = { id: channel.id };
+            planLines.push(`  - created channel #${channelName}`);
+          }
+        } else {
+          reusedStanding++;
+          state.standingChannels[channelName] = { id: channel.id };
+          planLines.push(`  - channel #${channelName}: ready`);
+        }
+      }
+
+      if (!dryrun) saveJson(statePath, state);
+      if (dryrun)
+        return interaction.editReply(`Dry-run ✅\n\nPlan:\n${planLines.map((l) => `• ${l}`).join("\n")}`);
+      return interaction.editReply(
+        `Done ✅\nCategory "${categoryName}" ready.\n` +
+        `Standing channels — created: ${createdStanding}, reused: ${reusedStanding}`
+      );
+    }
+
+    // ---- /setup maps ----
+    if (interaction.commandName === "setup" && interaction.options.getSubcommand() === "maps") {
+      const eventKey     = interaction.options.getString("event");
+      const round        = interaction.options.getString("round") || null;
       const dryrun       = interaction.options.getBoolean("dryrun") ?? false;
-      const configPath   = path.join(__dirname, "config", `${configBase}.yml`);
-      const templatePath = path.join(__dirname, "config", `${configBase}.thread.md`);
+      const configPath   = path.join(roundDir(eventKey, round), "config.yml");
+      const templatePath = path.join(roundDir(eventKey, round), "thread.md");
 
       if (!fs.existsSync(configPath))   return interaction.editReply(`Config not found: ${configPath}`);
       if (!fs.existsSync(templatePath)) return interaction.editReply(`Thread template not found: ${templatePath}`);
@@ -742,21 +850,28 @@ client.on("interactionCreate", async (interaction) => {
       const errors   = validateConfig(cfg);
       if (errors.length) return interaction.editReply(`Config validation failed:\n- ${errors.join("\n- ")}`);
 
-      const statePath = path.join(process.cwd(), "data", `state-${cfg.event.key}.json`);
-      const state     = loadState(statePath);
-
+      const categoryState = loadJson(categoryStatePath(eventKey), { categoryId: null, standingChannels: {} });
+      const existingCategory = categoryState.categoryId
+        ? await guild.channels.fetch(categoryState.categoryId).catch(() => null)
+        : null;
+      const categoryId = existingCategory?.id ?? null;
+      if (!categoryId) return interaction.editReply("Category not set up yet — run `/setup event` first.");
       await assertBotAccess(guild, categoryId);
 
+      const statePath = roundStatePath(eventKey, round);
+      const state     = loadJson(statePath, { channels: {}, threads: {} });
+
+      const channelPrefix = round ? `${eventKey}-${round}` : eventKey;
       const planLines = [];
       let createdChannels = 0, createdThreads = 0, reusedChannels = 0, reusedThreads = 0;
 
       for (const map of cfg.maps) {
-        const channelName = `${slugify(cfg.event.key)}-map${pad2(map.mapNumber)}`;
+        const channelName = `${channelPrefix}-map${pad2(map.mapNumber)}`;
         planLines.push(`Map ${map.mapNumber}: channel #${channelName}`);
 
         let mapChannelId = state.channels?.[channelName]?.id;
         let mapChannel   = mapChannelId ? await guild.channels.fetch(mapChannelId).catch(() => null) : null;
-        if (!mapChannel) mapChannel = await findChannelByNameInCategory(guild, categoryId, channelName);
+        if (!mapChannel && categoryId) mapChannel = await findChannelByNameInCategory(guild, categoryId, channelName);
 
         if (!mapChannel) {
           if (dryrun) { planLines.push(`  - would create channel`); }
@@ -883,7 +998,7 @@ client.on("interactionCreate", async (interaction) => {
         }
       }
 
-      if (!dryrun) saveState(statePath, state);
+      if (!dryrun) saveJson(statePath, state);
       if (dryrun)
         return interaction.editReply(`Dry-run ✅\n\nPlan:\n${planLines.map((l) => `• ${l}`).join("\n")}`);
       return interaction.editReply(
@@ -894,16 +1009,16 @@ client.on("interactionCreate", async (interaction) => {
 
     // ---- /teardown ----
     if (interaction.commandName === "teardown") {
-      const configBase  = interaction.options.getString("config");
+      const eventKey    = interaction.options.getString("event");
+      const round       = interaction.options.getString("round") || null;
       const dryrun      = interaction.options.getBoolean("dryrun") ?? false;
       const deleteState = interaction.options.getBoolean("delete_state") ?? false;
-      const configPath  = path.join(__dirname, "config", `${configBase}.yml`);
+      const configPath  = path.join(roundDir(eventKey, round), "config.yml");
 
       if (!fs.existsSync(configPath)) return interaction.editReply(`Config not found: ${configPath}`);
 
-      const cfg       = readYaml(configPath);
-      const statePath = path.join(process.cwd(), "data", `state-${cfg.event.key}.json`);
-      const state     = loadState(statePath);
+      const statePath = roundStatePath(eventKey, round);
+      const state     = loadJson(statePath, { channels: {}, threads: {} });
 
       const toDeleteThreads  = Object.values(state.threads  || {}).map((x) => x.id).filter(Boolean);
       const toDeleteChannels = Object.values(state.channels || {}).map((x) => x.id).filter(Boolean);
