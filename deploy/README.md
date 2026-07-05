@@ -146,6 +146,18 @@ defaults as before this feature existed.
 
 ## Known risks / follow-ups (not addressed by this setup)
 
+- **`bootstrap.sh` can corrupt its own execution if a commit changes its byte
+  length.** The script's `git pull` step rewrites `bootstrap.sh` itself while
+  bash is still executing it; if the file's size changes, bash can end up
+  reading a mid-file offset from the *new* content after having already
+  buffered part of the *old* content, producing confusing errors partway
+  through (seen once: `cp: cannot stat '.../furiosa.service'` right after a
+  commit that renamed that file). The repo state on disk is unaffected —
+  `git pull` itself completes correctly before the corruption manifests. If
+  this happens, just re-run `bootstrap.sh`; the second run reads the
+  already-pulled file cleanly since there's no concurrent rewrite. Not fixed
+  (would need the script to re-exec itself from a copy after the pull) since
+  it's rare and self-recovers.
 - **`data/<event>/category.json`, `data/<event>[/<round>]/state.json`, and `data/<event>/registrations.json` are local-only and not backed up.** These files track the event's category/standing channels, each round's map channels/threads, and player registrations/approvals, for `/setup maps`, `/teardown`, `/register`, and `/registrations`. They live outside `src/config/` deliberately (config stays a pure, git-managed tree; `data/` is the bot's own generated state) and are gitignored, but that also means if this box is ever lost again, that tracking state is lost with it — the same failure mode as the previous incident. `registrations.json` is arguably the highest-stakes of the three, since it holds live player sign-ups rather than just regenerable tracking IDs. A future fix could sync `data/` to S3 on a schedule, or move this state into the existing RDS Postgres instance.
 - **`Restart=on-failure`** won't restart the service on a clean exit (e.g. an
   unhandled rejection handler that calls `process.exit(0)`). Switch to
