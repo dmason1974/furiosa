@@ -73,7 +73,7 @@ src/config/
 
 ### Commands
 
-- `/setup event event:<key> [dryrun]` — creates the category + 4 standing
+- `/setup event event:<key> [dryrun]` — creates the category + 5 standing
   channels if missing. Idempotent. Also publishes the rules index (below) as
   its last step every time it runs.
 - `/setup maps event:<key> [round:<key>] [dryrun]` — creates map channels +
@@ -83,23 +83,33 @@ src/config/
 - **Rules index (2026-07-05, part of `/setup event`, not a separate
   command)**: reads the server-wide `definitions` category (one channel per
   rules term, e.g. `☢️-act-of-war`), publishes each as its own message in
-  that event's `#rules` channel, and posts/pins an index message linking to
-  all of them, with the index message created *first* (as a placeholder,
-  then edited once every definition's message ID is known) so it's always
-  the chronologically earliest message in `#rules`, not the last. Idempotent
-  — message IDs are tracked in `event_rules_index` (Postgres) so re-running
-  `/setup event` edits existing messages instead of duplicating them; the
-  definition *text* itself is always re-read live from the `definitions`
-  channels, never cached in Postgres. If no `definitions` category exists on
-  that server (e.g. the test server, which has none), this step is skipped
-  gracefully — noted in the reply, never fails `/setup event` itself.
-  Factored as a standalone `publishRulesIndex()` helper (called from, but
-  not entangled with, the `/setup event` handler) since this may get
-  promoted to a server-level (non-event-scoped) command later. Requires the
-  bot's `MessageContent` privileged intent (enabled 2026-07-05) to read
+  that event's `#rules` channel — heading is a markdown `#` (large text, not
+  just bold) for the term name, followed by the concatenated text of every
+  human-authored message in that definitions channel, and any image
+  attachments are re-uploaded alongside it (re-uploaded, not linked, because
+  Discord's attachment CDN URLs carry an expiring signed query string that
+  would eventually break a pasted link) — and posts/pins an index message
+  linking to all of them, with the index message created *first* (as a
+  placeholder, then edited once every definition's message ID is known) so
+  it's always the chronologically earliest message in `#rules`, not the
+  last. Idempotent — message IDs are tracked in `event_rules_index`
+  (Postgres) so re-running `/setup event` edits existing messages instead of
+  duplicating them; the definition *text and images* are always re-read
+  live from the `definitions` channels, never cached in Postgres. If no
+  `definitions` category exists on that server (e.g. the test server, which
+  only has 2 dummy definition channels for testing this feature, not the
+  full 14), this step is skipped gracefully — noted in the reply, never
+  fails `/setup event` itself. Factored as a standalone
+  `publishRulesIndex()` helper (called from, but not entangled with, the
+  `/setup event` handler) since this may get promoted to a server-level
+  (non-event-scoped) command later. Requires the bot's `MessageContent`
+  privileged intent (enabled 2026-07-05 on both bot applications) to read
   non-bot message content in the `definitions` channels — without it
   Discord silently redacts content to `""` for any message the bot didn't
-  author.
+  author. **Not yet reconfirmed working end-to-end after the last two
+  fixes** (image re-upload, `#` heading) — next session should re-run
+  `/setup event` against the test server's 2 dummy definitions and visually
+  confirm both render correctly together in `#rules`.
 - `/teardown maps event:<key> [round:<key>] [dryrun] [delete_state]` —
   deletes a round's map channels/threads. Optionally deletes its `state.json`.
 - `/teardown event event:<key> [dryrun]` — deletes the category + standing
@@ -149,8 +159,21 @@ src/config/
   leading non-whitespace character survives trimming, and the `.` reads as
   closing the boilerplate sentence.
 - **Channel topics don't auto-format slash-command mentions.** Bold them
-  manually with `**/command**` if you want them visually distinct — nothing
-  auto-bolds plain `/command` text in a topic string.
+  manually — `STANDING_CHANNEL_TOPICS.registration`'s `/register`/`/unregister`
+  lines use `***bold+italic***` — nothing auto-bolds plain `/command` text in
+  a topic string.
+- **A channel topic can't hardcode a link to another per-event channel.**
+  `STANDING_CHANNEL_TOPICS.registration` (2026-07-05) is a *function*
+  `(guildId, registeredTeamsChannelId) => topicString`, not a plain string,
+  specifically so its `[#registered-teams](https://discord.com/channels/...)`
+  masked link points at *that event's own* `#registered-teams` channel — a
+  fixed string would only be correct for one specific event/server (this was
+  caught before shipping: an earlier draft had a real but event-specific
+  test-server URL pasted directly into what was about to become the shared
+  template). Resolved at `/setup event` time using
+  `state.standingChannels["registered-teams"].id`, which is always already
+  known because `"registered-teams"` is processed earlier than
+  `"registration"` in `STANDING_CHANNEL_NAMES`.
 - **Command visibility vs. authorization are two separate systems, and only
   one is settable from the bot's own token.** Every command's actual gate is
   the in-code `isStaff`/`isWarboy` check in `interactionCreate` — that's the
@@ -204,9 +227,9 @@ src/config/
 - **`CHANNEL_PREFIX`/`THREAD_PREFIX` are gone** — confirmed dead (never
   referenced in code) and removed from `.env.example`.
 - **One new required env var for the registration feature**: `WARBOY_ROLE_ID`
-  (the general member role allowed to use `/register`/`/unregister`). Set in
-  `.env` on the current Fury Road server/box — will need a real value again
-  for any other server (see Future plan: test server below).
+  (the general member role allowed to use `/register`/`/unregister`). Set on
+  both the prod and test boxes' `.env` — will need a real value again for
+  any other server.
   `EVENT_APPLICATIONS_CHANNEL_ID` used to be a second bot-level env var here
   but was removed: where team-ready Approve/Reject notifications post is now
   the per-event `#applications` standing channel (created by `/setup event`,
@@ -227,37 +250,34 @@ src/config/
 
 ## Future plan / open items
 
-- **Test Discord server deploy — in progress (2026-07-05).** The registration
-  feature (`/register`, `/unregister`, `/registrations`, Approve/Reject
-  buttons) had only been exercised on the live Fury Road server before this.
-  Decided: a second, fully independent systemd instance on the same
-  Lightsail box (not an env-swap on one instance) — see `deploy/README.md`'s
-  "Running a second (test) instance" section for the `bootstrap.sh`
-  `APP_DIR`/`SERVICE_NAME` override mechanism. `/opt/furiosa-test` is
-  installed and running as `furiosa-test.service`; its `.env` has the test
-  server's `GUILD_ID`, `EVENT_STAFF_ROLE_ID`, `WARBOY_ROLE_ID`, and
-  `DISCORD_TOKEN` filled in. Not yet exercised end-to-end: run `/setup event`
-  against the test server to confirm it creates the category + all 5
-  standing channels (including the new `applications` one) and then walk
-  through `/register`/`/registrations`/`/unregister` there.
+- **Postgres migration + rules index — implemented and deployed
+  (2026-07-05), needs a final E2E pass next session.** Both `furiosa-prod`
+  and `furiosa-test` are live on the new us-east-1 RDS instance and log `DB
+  schema ready (prod + test)` cleanly. What's been individually verified
+  this session: `/setup event` dry-run and real runs against the test
+  server (including the dynamic `#registration` topic and skip-gracefully
+  behavior with only 2 dummy `definitions` channels there); DBeaver
+  connects via SSH tunnel and shows all expected tables in both `furyroad`/
+  `furyroad_test`. **Not yet re-verified after the Postgres migration**:
+  the full `/register` → `/registrations approve` → `#registered-teams`
+  sync → `/unregister` player-facing flow end-to-end (it worked pre-migration
+  against the old JSON files; the code path changed, but this hasn't been
+  re-exercised against the new DB-backed tables). Also see the rules-index
+  "not yet reconfirmed" note under Commands above — same next-session
+  action, same test event.
 - **Matchmake/ELO rearchitecture**: give `/lobby`/`/matchmake`/`/create_match`
   their own way to resolve a category (mirroring `/setup event`'s model)
   instead of the removed `EVENT_CATEGORY_ID`. Not started.
-- **Runtime state durability — done (2026-07-05).** All bot runtime state
-  (category state, round state, registrations) moved from local
-  `data/<event>/*.json` to the new us-east-1 RDS instance — see "Config vs.
-  runtime state" above. Covered by RDS automated backups now. No backfill was
-  done of the old JSON data (explicit call at the time); existing events'
-  categories/channels/threads/registrations need re-registering, though
-  `/setup event`/`/setup maps` will still find existing Discord
-  categories/channels by *name* if re-run.
-- **Registrations: JSON now, DB later — done (2026-07-05).** Moved to
-  Postgres alongside category/round state, same migration as above.
 - **Duplicate-looking configs**: `src/config/bop/` and
   `src/config/balance-of-power/` both have `event.name: "Balance of Power"` —
-  never reconciled/deduplicated this session. Worth checking with the user
-  whether one is stale before assuming both are intentionally separate events.
+  never reconciled/deduplicated. Worth checking with the user whether one is
+  stale before assuming both are intentionally separate events.
 - **`Restart=on-failure` vs `Restart=always`** in `deploy/furiosa.service`:
   current setting won't restart the service on a clean-exit crash (e.g. an
   unhandled rejection handler calling `process.exit(0)`). Flagged as a
   tradeoff, not changed.
+- **Discord "how to use Furiosa" post** — drafted this session (staff-facing
+  usage guide covering the two-tier role model, the 5 standing channels, the
+  registrations workflow, and the rules-index behavior) but not yet posted
+  by the user; the draft isn't saved anywhere in-repo, only in this
+  session's chat history.
