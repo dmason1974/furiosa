@@ -40,13 +40,17 @@ src/config/
   field, no fallback. Don't reintroduce one without a good reason.
 - Multi-round events nest each round in its own subdirectory; single-round
   events keep `config.yml`/`thread.md` directly in the event directory.
-- The category + 5 standing channels (`event-chat`, `rules`,
-  `registered-teams`, `registration`, `applications`) belong to the **event**
-  and are shared across all its rounds. Map channels/threads belong to a
-  **round** (or to the event directly, if it has no rounds). `applications`
-  is staff-only (hidden from `@everyone`, visible to `EVENT_STAFF_ROLE_ID`
-  and the bot) — it's where Approve/Reject team-ready notifications post;
-  see the `/register` entry below.
+- The category + 6 standing channels (`applications`, `event-chat`,
+  `registered-teams`, `registration`, `rules`, `zones`) belong to the
+  **event** and are shared across all its rounds. Map channels/threads
+  belong to a **round** (or to the event directly, if it has no rounds).
+  `applications` is staff-only (hidden from `@everyone`, visible to
+  `EVENT_STAFF_ROLE_ID` and the bot) — it's where Approve/Reject team-ready
+  notifications post; see the `/register` entry below. `STANDING_CHANNEL_NAMES`
+  is declared alphabetically (2026-07-05) and `/setup event` re-enforces that
+  order via `guild.channels.setPositions()` every run — not just creation
+  order — so a category whose channels exist in some other order (e.g. from
+  before `zones` was added) self-corrects on the next `/setup event`.
 
 ### Config vs. runtime state — kept deliberately separate
 
@@ -64,7 +68,12 @@ src/config/
     single-round events).
   - `registrations`, `registration_pending_reviews`, `event_registration_state`
     — player self-registration state, written by `/register`/`/registrations`.
-  - All three are covered by the same RDS automated backups as the
+  - `event_zone_definitions` (`zones` JSONB keyed by zone number, plus
+    `admin_countries`) and `event_zones_index` (`header_message_id`,
+    `zone_messages` — message IDs per zone number) — zone Homeland/AI data
+    imported by `/setup zones` and the message IDs `#zones` posts to. See
+    the `/setup zones` entry below.
+  - All these are covered by the same RDS automated backups as the
     matchmaking tables (see "Known constraints" below) — this was the whole
     point of the move, replacing the old unbacked-up local JSON files.
     `resolveEventCategory`'s name-based fallback (searching Discord by
@@ -73,13 +82,58 @@ src/config/
 
 ### Commands
 
-- `/setup event event:<key> [dryrun]` — creates the category + 5 standing
-  channels if missing. Idempotent. Also publishes the rules index (below) as
-  its last step every time it runs.
+- `/setup event event:<key> [dryrun]` — creates the category + 6 standing
+  channels if missing, and re-enforces their alphabetical order. Idempotent.
+  Also publishes the rules index and the zones index (both below) as its
+  last steps every time it runs.
 - `/setup maps event:<key> [round:<key>] [dryrun]` — creates map channels +
   private team threads (the original, longest-standing feature). Requires
   the category to already exist (via `/setup event`) — errors with a clear
-  message instead of silently creating one.
+  message instead of silently creating one. For zones (see below), a
+  `config.yml` zone entry may omit `homeland`/`ai` — if so, they're looked
+  up from that event's imported zone data by `zoneNumber`; if neither source
+  has them, that zone errors clearly instead of posting an empty "(none)"
+  into the private team thread.
+- **Zone import (2026-07-05)**: `/setup zones event:<key> sheet_url:<url>
+  [dryrun]` imports a staff Google Sheet's `Country`/`Type`/`Zone` columns
+  (matched by header name, any column order/extras ignored; `Type` is
+  `Homeland`/`AI`/`admin`; blank `Type`+`Zone` rows are the unassigned
+  country pool and are skipped) into `event_zone_definitions`, then
+  publishes/updates that event's `#zones` channel: a pinned "🌐 Map
+  Division" legend + admin-countries header (wording matches the original
+  hand-authored `#map-zones` reference channel, admin countries populated
+  dynamically instead of hardcoded), followed by one message per zone
+  (`## Zone N` / `### Homeland` / `### AI`, Homeland first) — **not** a
+  links-index (an earlier version posted a pinned links-index instead; it
+  overflowed Discord's 2000-char limit once a single event has 30+ zones,
+  and was dropped in favor of matching the original channel's format).
+  Idempotent — re-running edits existing zone messages/header rather than
+  duplicating, and a zone present in an old import but missing from a new
+  one gets its message edited to note removal rather than deleted (avoids
+  a broken link) or silently left stale. **The sheet must be shared "Anyone
+  with the link can view"** — the bot fetches it as a plain CSV export, no
+  OAuth/service account is set up; this is a real, easy-to-forget
+  precondition (a sheet copied from another loses its sharing settings).
+  Zone data is intentionally decoupled from *which team* plays *which
+  zone* — that "draw" is still a manual step, hand-authored into a round's
+  `config.yml` (`zoneNumber` + `team: {...}`, no `homeland`/`ai` needed
+  anymore). Implemented and verified end-to-end on `furiosa-test` for both
+  `blood-pact` (30 zones, real sheet import) and `balance-of-power` (11
+  zones, reverse-engineered from the original `#map-zones` channel — see
+  below); code is deployed to prod and `balance-of-power`'s zone data is in
+  the prod DB, but **`/setup event` has not yet been run on prod for either
+  event** — that's the deliberate "go live" step, left for the user to
+  trigger in the real Discord server when ready, not something to run
+  proactively.
+  - **Known open item**: `balance-of-power`'s Group 3 AI country "Urumqi"
+    (a city) has no clean equivalent in the `blood-pact` sheet — closest is
+    "Uyghur" (an ethnic/region label, not the same kind of name) — left
+    unchanged pending a decision, everything else in that zone data had its
+    spelling standardized to match `blood-pact`'s sheet (e.g. "Carribean
+    States" → "Caribbean States", "USA" → "United States").
+  - **Next planned work (not started)**: an "image import" feature — the
+    original `#map-zones` channel also had a map graphic image attachment
+    (`Country_Groups_3.png`) that isn't reproduced anywhere yet.
 - **Rules index (2026-07-05, part of `/setup event`, not a separate
   command)**: reads the server-wide `definitions` category (one channel per
   rules term, e.g. `☢️-act-of-war`), publishes each as its own message in
@@ -271,7 +325,18 @@ src/config/
 - **Duplicate-looking configs**: `src/config/bop/` and
   `src/config/balance-of-power/` both have `event.name: "Balance of Power"` —
   never reconciled/deduplicated. Worth checking with the user whether one is
-  stale before assuming both are intentionally separate events.
+  stale before assuming both are intentionally separate events. Note:
+  2026-07-05's zone-import backfill used the `balance-of-power` event key
+  specifically (user's explicit instruction), so that's now the one with
+  real zone data in Postgres — a data point, not a resolution of which
+  directory is canonical.
+- **Zone import feature (2026-07-05)** — implemented, deployed to prod,
+  verified end-to-end on `furiosa-test`. See the `/setup zones` entry under
+  Commands above for full detail, the Urumqi/Uyghur open naming question,
+  and the not-yet-started "image import" follow-up. **Not yet live**:
+  `/setup event` hasn't been run on prod for `blood-pact` or
+  `balance-of-power` since this shipped — that's an intentional "publish
+  when ready" step for the user, not an oversight.
 - **`Restart=on-failure` vs `Restart=always`** in `deploy/furiosa.service`:
   current setting won't restart the service on a clean-exit crash (e.g. an
   unhandled rejection handler calling `process.exit(0)`). Flagged as a
