@@ -56,11 +56,13 @@ This directory holds the artifacts needed to (re)build that box from scratch.
    `PGHOST`, `PGPORT`, `PGDATABASE_PROD`, `PGDATABASE_TEST`, `PGUSER`,
    `PGPASSWORD`. Never commit this file.
 
-   Postgres still points at the existing eu-west-2 RDS instance
-   (`fury-road-db.cpimu62k2scs.eu-west-2.rds.amazonaws.com`) — that hasn't
-   moved and isn't required for `/setup`/`/teardown` to work, only for the
-   in-progress matchmaking/ELO commands (`/lobby`, `/matchmake`,
-   `/create_match`, `/record_result`, `/season`, `/league`).
+   Postgres is an RDS instance co-located in us-east-1
+   (`furiosa-db.c43i6su88bsx.us-east-1.rds.amazonaws.com`) — it's required
+   for `/setup`, `/teardown`, `/register`/`/unregister`/`/registrations`
+   *and* the in-progress matchmaking/ELO commands (`/lobby`, `/matchmake`,
+   `/create_match`, `/record_result`, `/season`, `/league`). All of the
+   bot's runtime state (event category/channel/thread IDs, registrations)
+   lives there now — nothing is written to local JSON any more.
 
 8. **Skip this step if you used the launch script in A.1** — the repo is
    already cloned. Otherwise, get it onto the box once, manually, so
@@ -105,8 +107,8 @@ never touch an existing `.env`.
 To iterate on features (e.g. registration) without risking the live Fury Road
 server, run a second fully independent instance pointed at a separate Discord
 test server + bot application. It reuses the same `furiosa` system user but
-gets its own checkout, `.env`, `data/`, and systemd unit — `bootstrap.sh`'s
-env var overrides make this the same script, not a fork of it.
+gets its own checkout, `.env`, and systemd unit — `bootstrap.sh`'s env var
+overrides make this the same script, not a fork of it.
 
 1. First time only, install it:
    ```
@@ -123,11 +125,13 @@ env var overrides make this the same script, not a fork of it.
    `DISCORD_TOKEN`, `GUILD_ID`, `EVENT_STAFF_ROLE_ID`, `WARBOY_ROLE_ID` — a
    separate bot application registered against the test Discord server (own
    token, Server Members Intent enabled, invited to that server).
-   `PGHOST`/`PGDATABASE_*`/`PGUSER`/`PGPASSWORD` can simply mirror prod's
-   `.env` values; the DB isn't exercised by registration/setup/teardown, and
-   matchmaking commands (which do touch it) already fail non-fatally. (The
-   applications channel is no longer an env var — `/setup event` creates a
-   per-event `#applications` standing channel automatically.)
+   `PGHOST`/`PGDATABASE_*`/`PGUSER`/`PGPASSWORD` can mirror prod's `.env`
+   values (same RDS instance) — but also set `DB_IS_TEST_INSTANCE=true`,
+   which routes this instance's registrations/category/round state to
+   `PGDATABASE_TEST` instead of `PGDATABASE_PROD`, keeping test data fully
+   separate from the live server's. (The applications channel is no longer
+   an env var — `/setup event` creates a per-event `#applications` standing
+   channel automatically.)
 4. `sudo chmod 600 /opt/furiosa-test/.env` then `sudo systemctl restart furiosa-test`.
 5. Verify: `sudo systemctl status furiosa-test`, `sudo journalctl -u
    furiosa-test -f` (confirm gateway login), then in the test Discord server
@@ -158,7 +162,6 @@ defaults as before this feature existed.
   already-pulled file cleanly since there's no concurrent rewrite. Not fixed
   (would need the script to re-exec itself from a copy after the pull) since
   it's rare and self-recovers.
-- **`data/<event>/category.json`, `data/<event>[/<round>]/state.json`, and `data/<event>/registrations.json` are local-only and not backed up.** These files track the event's category/standing channels, each round's map channels/threads, and player registrations/approvals, for `/setup maps`, `/teardown`, `/register`, and `/registrations`. They live outside `src/config/` deliberately (config stays a pure, git-managed tree; `data/` is the bot's own generated state) and are gitignored, but that also means if this box is ever lost again, that tracking state is lost with it — the same failure mode as the previous incident. `registrations.json` is arguably the highest-stakes of the three, since it holds live player sign-ups rather than just regenerable tracking IDs. A future fix could sync `data/` to S3 on a schedule, or move this state into the existing RDS Postgres instance.
 - **`Restart=on-failure`** won't restart the service on a clean exit (e.g. an
   unhandled rejection handler that calls `process.exit(0)`). Switch to
   `Restart=always` in `furiosa.service.tmpl` if that turns out to matter.

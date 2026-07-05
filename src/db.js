@@ -106,6 +106,53 @@ async function initSchema(isTest = false) {
     CREATE INDEX IF NOT EXISTS idx_matches_status    ON matches(status);
     CREATE INDEX IF NOT EXISTS idx_matches_season_id ON matches(season_id);
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS registrations (
+      event_key     TEXT        NOT NULL,
+      player_id     TEXT        NOT NULL,
+      team          TEXT        NOT NULL,
+      ign           TEXT        NOT NULL,
+      status        TEXT        NOT NULL DEFAULT 'pending',
+      registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      reviewed_by   TEXT,
+      PRIMARY KEY (event_key, player_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_registrations_event_team ON registrations(event_key, team);
+
+    CREATE TABLE IF NOT EXISTS registration_pending_reviews (
+      event_key  TEXT        NOT NULL,
+      token      TEXT        NOT NULL,
+      team       TEXT        NOT NULL,
+      message_id TEXT        NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (event_key, token)
+    );
+
+    CREATE TABLE IF NOT EXISTS event_registration_state (
+      event_key                   TEXT PRIMARY KEY,
+      registered_teams_message_id TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS event_category_state (
+      event_key         TEXT        PRIMARY KEY,
+      category_id       TEXT,
+      standing_channels JSONB       NOT NULL DEFAULT '{}',
+      max_team_size     INTEGER     NOT NULL DEFAULT 5,
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_category_state_category_id ON event_category_state(category_id);
+
+    CREATE TABLE IF NOT EXISTS event_round_state (
+      event_key   TEXT        NOT NULL,
+      round_key   TEXT        NOT NULL DEFAULT '',
+      channels    JSONB       NOT NULL DEFAULT '{}',
+      threads     JSONB       NOT NULL DEFAULT '{}',
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (event_key, round_key)
+    );
+  `);
 }
 
 // ---------------------------
@@ -407,10 +454,200 @@ async function completeMatch(matchId, winningTeam, eloModule, isTest = false) {
   }
 }
 
+// ---------------------------
+// Registrations
+// ---------------------------
+async function getRegistrationEntries(eventKey, isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT player_id, team, ign, status, registered_at, updated_at, reviewed_by
+     FROM registrations WHERE event_key = $1`,
+    [eventKey]
+  );
+  const entries = {};
+  for (const r of rows) {
+    entries[r.player_id] = {
+      team: r.team,
+      ign: r.ign,
+      status: r.status,
+      registeredAt: r.registered_at.toISOString(),
+      updatedAt: r.updated_at.toISOString(),
+      reviewedBy: r.reviewed_by,
+    };
+  }
+  return entries;
+}
+
+async function upsertRegistration(eventKey, playerId, entry, isTest = false) {
+  const { team, ign, status, registeredAt, updatedAt, reviewedBy } = entry;
+  await getPool(isTest).query(
+    `INSERT INTO registrations (event_key, player_id, team, ign, status, registered_at, updated_at, reviewed_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+     ON CONFLICT (event_key, player_id) DO UPDATE
+       SET team = EXCLUDED.team, ign = EXCLUDED.ign, status = EXCLUDED.status,
+           updated_at = EXCLUDED.updated_at, reviewed_by = EXCLUDED.reviewed_by`,
+    [eventKey, playerId, team, ign, status ?? "pending", registeredAt, updatedAt, reviewedBy ?? null]
+  );
+}
+
+async function deleteRegistration(eventKey, playerId, isTest = false) {
+  await getPool(isTest).query(
+    `DELETE FROM registrations WHERE event_key = $1 AND player_id = $2`,
+    [eventKey, playerId]
+  );
+}
+
+async function approveTeamRegistrations(eventKey, team, reviewerId, isTest = false) {
+  await getPool(isTest).query(
+    `UPDATE registrations SET status = 'approved', reviewed_by = $1, updated_at = NOW()
+     WHERE event_key = $2 AND team = $3 AND status <> 'rejected'`,
+    [reviewerId, eventKey, team]
+  );
+}
+
+async function rejectTeamRegistrations(eventKey, team, reviewerId, isTest = false) {
+  await getPool(isTest).query(
+    `UPDATE registrations SET status = 'rejected', reviewed_by = $1, updated_at = NOW()
+     WHERE event_key = $2 AND team = $3`,
+    [reviewerId, eventKey, team]
+  );
+}
+
+async function setRegistrationStatus(eventKey, playerId, status, reviewerId, isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `UPDATE registrations SET status = $1, reviewed_by = $2, updated_at = NOW()
+     WHERE event_key = $3 AND player_id = $4
+     RETURNING *`,
+    [status, reviewerId, eventKey, playerId]
+  );
+  return rows[0] || null;
+}
+
+async function getRegisteredTeamsMessageId(eventKey, isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT registered_teams_message_id FROM event_registration_state WHERE event_key = $1`,
+    [eventKey]
+  );
+  return rows[0]?.registered_teams_message_id || null;
+}
+
+async function setRegisteredTeamsMessageId(eventKey, messageId, isTest = false) {
+  await getPool(isTest).query(
+    `INSERT INTO event_registration_state (event_key, registered_teams_message_id)
+     VALUES ($1, $2)
+     ON CONFLICT (event_key) DO UPDATE SET registered_teams_message_id = EXCLUDED.registered_teams_message_id`,
+    [eventKey, messageId]
+  );
+}
+
+async function addPendingReview(eventKey, token, team, messageId, isTest = false) {
+  await getPool(isTest).query(
+    `INSERT INTO registration_pending_reviews (event_key, token, team, message_id)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (event_key, token) DO UPDATE SET team = EXCLUDED.team, message_id = EXCLUDED.message_id`,
+    [eventKey, token, team, messageId]
+  );
+}
+
+async function getPendingReview(eventKey, token, isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT team, message_id FROM registration_pending_reviews WHERE event_key = $1 AND token = $2`,
+    [eventKey, token]
+  );
+  if (!rows[0]) return null;
+  return { team: rows[0].team, messageId: rows[0].message_id };
+}
+
+async function deletePendingReview(eventKey, token, isTest = false) {
+  await getPool(isTest).query(
+    `DELETE FROM registration_pending_reviews WHERE event_key = $1 AND token = $2`,
+    [eventKey, token]
+  );
+}
+
+// ---------------------------
+// Category / round state
+// ---------------------------
+async function loadCategoryState(eventKey, isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT category_id, standing_channels, max_team_size FROM event_category_state WHERE event_key = $1`,
+    [eventKey]
+  );
+  if (!rows[0]) return { categoryId: null, standingChannels: {}, maxTeamSize: 5 };
+  return {
+    categoryId: rows[0].category_id,
+    standingChannels: rows[0].standing_channels,
+    maxTeamSize: rows[0].max_team_size,
+  };
+}
+
+async function saveCategoryState(eventKey, state, isTest = false) {
+  await getPool(isTest).query(
+    `INSERT INTO event_category_state (event_key, category_id, standing_channels, max_team_size, updated_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (event_key) DO UPDATE
+       SET category_id = EXCLUDED.category_id, standing_channels = EXCLUDED.standing_channels,
+           max_team_size = EXCLUDED.max_team_size, updated_at = NOW()`,
+    [eventKey, state.categoryId ?? null, JSON.stringify(state.standingChannels || {}), state.maxTeamSize ?? 5]
+  );
+}
+
+async function deleteCategoryState(eventKey, isTest = false) {
+  await getPool(isTest).query(`DELETE FROM event_category_state WHERE event_key = $1`, [eventKey]);
+}
+
+async function getEventKeyForCategory(categoryId, isTest = false) {
+  if (!categoryId) return null;
+  const { rows } = await getPool(isTest).query(
+    `SELECT event_key FROM event_category_state WHERE category_id = $1 LIMIT 1`,
+    [categoryId]
+  );
+  return rows[0]?.event_key || null;
+}
+
+async function loadRoundState(eventKey, round, isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT channels, threads FROM event_round_state WHERE event_key = $1 AND round_key = $2`,
+    [eventKey, round || ""]
+  );
+  if (!rows[0]) return { channels: {}, threads: {} };
+  return { channels: rows[0].channels, threads: rows[0].threads };
+}
+
+async function saveRoundState(eventKey, round, state, isTest = false) {
+  await getPool(isTest).query(
+    `INSERT INTO event_round_state (event_key, round_key, channels, threads, updated_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (event_key, round_key) DO UPDATE
+       SET channels = EXCLUDED.channels, threads = EXCLUDED.threads, updated_at = NOW()`,
+    [eventKey, round || "", JSON.stringify(state.channels || {}), JSON.stringify(state.threads || {})]
+  );
+}
+
+async function deleteRoundState(eventKey, round, isTest = false) {
+  await getPool(isTest).query(
+    `DELETE FROM event_round_state WHERE event_key = $1 AND round_key = $2`,
+    [eventKey, round || ""]
+  );
+}
+
+async function findLingeringRoundStates(eventKey, isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT round_key FROM event_round_state WHERE event_key = $1`,
+    [eventKey]
+  );
+  return rows.map((r) => (r.round_key === "" ? "(no round)" : r.round_key));
+}
+
 module.exports = {
   getPool, initSchema,
   upsertPlayer, getPlayers, getRatings,
   lobbyAdd, lobbyRemove, lobbyList, lobbyClear, lobbyHasPendingMatches,
   createSeason, startSeason, endSeason, getActiveSeason, getSeasonByName, listSeasons, getLeagueTable,
   createMatch, getPendingMatches, getMatchWithPlayers, completeMatch,
+  getRegistrationEntries, upsertRegistration, deleteRegistration,
+  approveTeamRegistrations, rejectTeamRegistrations, setRegistrationStatus,
+  getRegisteredTeamsMessageId, setRegisteredTeamsMessageId,
+  addPendingReview, getPendingReview, deletePendingReview,
+  loadCategoryState, saveCategoryState, deleteCategoryState, getEventKeyForCategory,
+  loadRoundState, saveRoundState, deleteRoundState, findLingeringRoundStates,
 };

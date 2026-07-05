@@ -15,11 +15,6 @@ pnpm-debug.log*
 .env.*.local
 
 # --------------------
-# Runtime state (DO NOT COMMIT)
-# --------------------
-data/
-
-# --------------------
 # Logs
 # --------------------
 logs/

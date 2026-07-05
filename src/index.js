@@ -56,25 +56,12 @@ function slugify(s) {
 function readYaml(filePath)  { return yaml.load(fs.readFileSync(filePath, "utf8")); }
 function readText(filePath)  { return fs.readFileSync(filePath, "utf8"); }
 
-function ensureDir(dirPath) {
-  if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
-}
+// Runtime state (category/channel/thread IDs, registrations) all lives in
+// Postgres — see src/db.js. Only config (src/config/) is a local file tree,
+// and it's pure, git-managed, human-authored content, kept deliberately
+// separate from anything the bot writes itself.
+const DB_IS_TEST = process.env.DB_IS_TEST_INSTANCE === "true";
 
-function loadJson(filePath, defaults) {
-  if (!fs.existsSync(filePath)) return { ...defaults };
-  return JSON.parse(fs.readFileSync(filePath, "utf8"));
-}
-
-function saveJson(filePath, data) {
-  ensureDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
-}
-
-// An event's category + standing channels are shared across all its rounds.
-// A round (if the event has one) holds its own map channels/threads.
-// Config (src/config/) is pure, git-managed content; runtime state the bot
-// writes itself (category/channel IDs) lives in a parallel data/ tree so the
-// two never mix.
 function eventDir(eventKey) {
   return path.join(__dirname, "config", eventKey);
 }
@@ -83,61 +70,14 @@ function roundDir(eventKey, round) {
   return round ? path.join(eventDir(eventKey), round) : eventDir(eventKey);
 }
 
-function eventDataDir(eventKey) {
-  return path.join(process.cwd(), "data", eventKey);
+// Reverse-resolves an event key from a channel's parent category ID via
+// event_category_state.category_id.
+async function eventKeyForCategory(categoryId) {
+  return db.getEventKeyForCategory(categoryId, DB_IS_TEST);
 }
 
-function roundDataDir(eventKey, round) {
-  return round ? path.join(eventDataDir(eventKey), round) : eventDataDir(eventKey);
-}
-
-function categoryStatePath(eventKey) {
-  return path.join(eventDataDir(eventKey), "category.json");
-}
-
-function roundStatePath(eventKey, round) {
-  return path.join(roundDataDir(eventKey, round), "state.json");
-}
-
-function registrationsStatePath(eventKey) {
-  return path.join(eventDataDir(eventKey), "registrations.json");
-}
-
-function loadRegistrations(eventKey) {
-  return loadJson(registrationsStatePath(eventKey), {
-    registeredTeamsMessageId: null,
-    entries: {},
-    pendingReviews: {},
-  });
-}
-
-// Reverse-resolves an event key from a channel's parent category ID by
-// scanning every event's category.json for a matching categoryId.
-function eventKeyForCategory(categoryId) {
-  const dataDir = path.join(process.cwd(), "data");
-  if (!categoryId || !fs.existsSync(dataDir)) return null;
-  for (const entry of fs.readdirSync(dataDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const catPath = path.join(dataDir, entry.name, "category.json");
-    if (!fs.existsSync(catPath)) continue;
-    const cat = loadJson(catPath, { categoryId: null });
-    if (cat.categoryId === categoryId) return entry.name;
-  }
-  return null;
-}
-
-function findLingeringRoundStates(eventKey) {
-  const base = eventDataDir(eventKey);
-  const found = [];
-  if (fs.existsSync(path.join(base, "state.json"))) found.push("(no round)");
-  if (fs.existsSync(base)) {
-    for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
-      if (entry.isDirectory() && fs.existsSync(path.join(base, entry.name, "state.json"))) {
-        found.push(entry.name);
-      }
-    }
-  }
-  return found;
+async function findLingeringRoundStates(eventKey) {
+  return db.findLingeringRoundStates(eventKey, DB_IS_TEST);
 }
 
 function renderTemplate(template, vars) {
@@ -608,14 +548,14 @@ async function findChannelByNameInCategory(guild, categoryId, channelName) {
 // Registrations
 // ---------------------------
 async function syncRegisteredTeamsChannel(guild, eventKey) {
-  const catState = loadJson(categoryStatePath(eventKey), { categoryId: null, standingChannels: {} });
+  const catState = await db.loadCategoryState(eventKey, DB_IS_TEST);
   const channelInfo = catState.standingChannels?.["registered-teams"];
   if (!channelInfo?.id) return;
   const channel = await guild.channels.fetch(channelInfo.id).catch(() => null);
   if (!channel) return;
 
-  const regState = loadRegistrations(eventKey);
-  const approved = Object.entries(regState.entries).filter(([, e]) => e.status === "approved");
+  const entries = await db.getRegistrationEntries(eventKey, DB_IS_TEST);
+  const approved = Object.entries(entries).filter(([, e]) => e.status === "approved");
 
   const byTeam = {};
   for (const [userId, entry] of approved) {
@@ -637,56 +577,38 @@ async function syncRegisteredTeamsChannel(guild, eventKey) {
   }
   const body = lines.join("\n").trim();
 
-  let message = regState.registeredTeamsMessageId
-    ? await channel.messages.fetch(regState.registeredTeamsMessageId).catch(() => null)
+  const registeredTeamsMessageId = await db.getRegisteredTeamsMessageId(eventKey, DB_IS_TEST);
+  let message = registeredTeamsMessageId
+    ? await channel.messages.fetch(registeredTeamsMessageId).catch(() => null)
     : null;
 
   if (message) {
     await message.edit(body);
   } else {
     message = await channel.send(body);
-    regState.registeredTeamsMessageId = message.id;
-    saveJson(registrationsStatePath(eventKey), regState);
+    await db.setRegisteredTeamsMessageId(eventKey, message.id, DB_IS_TEST);
   }
 }
 
 async function approveTeam(guild, eventKey, team, reviewerId) {
-  const regState = loadRegistrations(eventKey);
-  const now = new Date().toISOString();
-  for (const entry of Object.values(regState.entries)) {
-    if (entry.team === team && entry.status !== "rejected") {
-      entry.status = "approved";
-      entry.reviewedBy = reviewerId;
-      entry.updatedAt = now;
-    }
-  }
-  saveJson(registrationsStatePath(eventKey), regState);
+  await db.approveTeamRegistrations(eventKey, team, reviewerId, DB_IS_TEST);
   await syncRegisteredTeamsChannel(guild, eventKey);
 }
 
 async function rejectTeam(guild, eventKey, team, reviewerId) {
-  const regState = loadRegistrations(eventKey);
-  const now = new Date().toISOString();
-  for (const entry of Object.values(regState.entries)) {
-    if (entry.team === team) {
-      entry.status = "rejected";
-      entry.reviewedBy = reviewerId;
-      entry.updatedAt = now;
-    }
-  }
-  saveJson(registrationsStatePath(eventKey), regState);
+  await db.rejectTeamRegistrations(eventKey, team, reviewerId, DB_IS_TEST);
   await syncRegisteredTeamsChannel(guild, eventKey);
 }
 
 async function postTeamReadyNotification(guild, eventKey, team) {
-  const catState = loadJson(categoryStatePath(eventKey), { categoryId: null, standingChannels: {} });
+  const catState = await db.loadCategoryState(eventKey, DB_IS_TEST);
   const channelId = catState.standingChannels?.applications?.id;
   if (!channelId) return;
   const channel = await guild.channels.fetch(channelId).catch(() => null);
   if (!channel) return;
 
-  const regState = loadRegistrations(eventKey);
-  const members = Object.entries(regState.entries).filter(
+  const entries = await db.getRegistrationEntries(eventKey, DB_IS_TEST);
+  const members = Object.entries(entries).filter(
     ([, e]) => e.team === team && e.status !== "rejected"
   );
 
@@ -705,8 +627,7 @@ async function postTeamReadyNotification(guild, eventKey, team) {
 
   const message = await channel.send({ content: body, components: [row] });
 
-  regState.pendingReviews[token] = { team, messageId: message.id };
-  saveJson(registrationsStatePath(eventKey), regState);
+  await db.addPendingReview(eventKey, token, team, message.id, DB_IS_TEST);
 }
 
 async function findThreadByName(mapChannel, threadName) {
@@ -731,7 +652,7 @@ client.once("ready", async () => {
     await db.initSchema(true);
     console.log("DB schema ready (prod + test)");
   } catch (err) {
-    console.error("DB schema init failed, continuing without matchmaking/ELO features:", err.message);
+    console.error("DB schema init failed — setup/teardown/registration commands and matchmaking/ELO features will error until Postgres is reachable:", err.message);
   }
 
   const guild = await client.guilds.fetch(guildId);
@@ -770,16 +691,16 @@ client.on("interactionCreate", async (interaction) => {
         let eventKey;
         if (cmd === "register") {
           if (!isWarboy(interaction) && !isStaff(interaction)) return interaction.respond([]);
-          eventKey = eventKeyForCategory(interaction.channel?.parentId);
+          eventKey = await eventKeyForCategory(interaction.channel?.parentId);
         } else {
           if (!isStaff(interaction)) return interaction.respond([]);
           eventKey = interaction.options.getString("event");
         }
         if (!eventKey) return interaction.respond([]);
 
-        const focused  = interaction.options.getFocused().toLowerCase();
-        const regState = loadRegistrations(eventKey);
-        const teams    = [...new Set(Object.values(regState.entries).map((e) => e.team))];
+        const focused = interaction.options.getFocused().toLowerCase();
+        const entries = await db.getRegistrationEntries(eventKey, DB_IS_TEST);
+        const teams   = [...new Set(Object.values(entries).map((e) => e.team))];
         const choices  = teams
           .filter((t) => t.toLowerCase().includes(focused))
           .slice(0, 25)
@@ -806,8 +727,7 @@ client.on("interactionCreate", async (interaction) => {
       }
       await interaction.deferUpdate();
 
-      const regState = loadRegistrations(eventKey);
-      const pending  = regState.pendingReviews?.[token];
+      const pending = await db.getPendingReview(eventKey, token, DB_IS_TEST);
       if (!pending) {
         return interaction.followUp({ content: "Already handled.", ephemeral: true });
       }
@@ -815,9 +735,7 @@ client.on("interactionCreate", async (interaction) => {
       if (action === "approve") await approveTeam(interaction.guild, eventKey, pending.team, interaction.user.id);
       else if (action === "reject") await rejectTeam(interaction.guild, eventKey, pending.team, interaction.user.id);
 
-      const freshState = loadRegistrations(eventKey);
-      delete freshState.pendingReviews[token];
-      saveJson(registrationsStatePath(eventKey), freshState);
+      await db.deletePendingReview(eventKey, token, DB_IS_TEST);
 
       const outcome = action === "approve" ? "✅ Approved" : "❌ Rejected";
       return interaction.editReply({
@@ -1174,8 +1092,7 @@ client.on("interactionCreate", async (interaction) => {
       const eventKey      = interaction.options.getString("event");
       const maxTeamSizeIn = interaction.options.getInteger("max_team_size");
       const dryrun        = interaction.options.getBoolean("dryrun") ?? false;
-      const statePath = categoryStatePath(eventKey);
-      const state     = loadJson(statePath, { categoryId: null, standingChannels: {} });
+      const state = await db.loadCategoryState(eventKey, DB_IS_TEST);
 
       const categoryName = eventKey;
       const categoryId   = await resolveEventCategory(guild, state, categoryName, dryrun);
@@ -1235,7 +1152,7 @@ client.on("interactionCreate", async (interaction) => {
         }
       }
 
-      if (!dryrun) saveJson(statePath, state);
+      if (!dryrun) await db.saveCategoryState(eventKey, state, DB_IS_TEST);
       if (dryrun)
         return interaction.editReply(`Dry-run ✅\n\nPlan:\n${planLines.map((l) => `• ${l}`).join("\n")}`);
       return interaction.editReply(
@@ -1260,7 +1177,7 @@ client.on("interactionCreate", async (interaction) => {
       const errors   = validateConfig(cfg);
       if (errors.length) return interaction.editReply(`Config validation failed:\n- ${errors.join("\n- ")}`);
 
-      const categoryState = loadJson(categoryStatePath(eventKey), { categoryId: null, standingChannels: {} });
+      const categoryState = await db.loadCategoryState(eventKey, DB_IS_TEST);
       const existingCategory = categoryState.categoryId
         ? await guild.channels.fetch(categoryState.categoryId).catch(() => null)
         : null;
@@ -1268,8 +1185,7 @@ client.on("interactionCreate", async (interaction) => {
       if (!categoryId) return interaction.editReply("Category not set up yet — run `/setup event` first.");
       await assertBotAccess(guild, categoryId);
 
-      const statePath = roundStatePath(eventKey, round);
-      const state     = loadJson(statePath, { channels: {}, threads: {} });
+      const state = await db.loadRoundState(eventKey, round, DB_IS_TEST);
 
       const channelPrefix = round ? `${eventKey}-${round}` : eventKey;
       const planLines = [];
@@ -1408,7 +1324,7 @@ client.on("interactionCreate", async (interaction) => {
         }
       }
 
-      if (!dryrun) saveJson(statePath, state);
+      if (!dryrun) await db.saveRoundState(eventKey, round, state, DB_IS_TEST);
       if (dryrun)
         return interaction.editReply(`Dry-run ✅\n\nPlan:\n${planLines.map((l) => `• ${l}`).join("\n")}`);
       return interaction.editReply(
@@ -1422,13 +1338,12 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.commandName === "teardown" && interaction.options.getSubcommand() === "event") {
       const eventKey  = interaction.options.getString("event");
       const dryrun    = interaction.options.getBoolean("dryrun") ?? false;
-      const statePath = categoryStatePath(eventKey);
-      const state     = loadJson(statePath, { categoryId: null, standingChannels: {} });
+      const state = await db.loadCategoryState(eventKey, DB_IS_TEST);
 
       if (!state.categoryId) return interaction.editReply(`Nothing to tear down — no category found for "${eventKey}".`);
 
       const standingIds     = Object.values(state.standingChannels || {}).map((x) => x.id).filter(Boolean);
-      const lingeringRounds = findLingeringRoundStates(eventKey);
+      const lingeringRounds = await findLingeringRoundStates(eventKey);
       const warning = lingeringRounds.length
         ? `\n⚠️ Round(s) still have tracked map channels/threads: ${lingeringRounds.join(", ")}. ` +
           `Run \`/teardown maps\` for those first if you want them cleaned up too — this won't touch them.`
@@ -1451,7 +1366,7 @@ client.on("interactionCreate", async (interaction) => {
       const category = await guild.channels.fetch(state.categoryId).catch(() => null);
       if (category) await category.delete("Event teardown").catch((e) => console.log(`Failed to delete category: ${String(e?.message || e)}`));
 
-      if (fs.existsSync(statePath)) fs.unlinkSync(statePath);
+      await db.deleteCategoryState(eventKey, DB_IS_TEST);
 
       return interaction.editReply(
         `Teardown complete ✅\nDeleted category "${eventKey}" and ${deletedStanding} standing channel(s).${warning}`
@@ -1468,8 +1383,7 @@ client.on("interactionCreate", async (interaction) => {
 
       if (!fs.existsSync(configPath)) return interaction.editReply(`Config not found: ${configPath}`);
 
-      const statePath = roundStatePath(eventKey, round);
-      const state     = loadJson(statePath, { channels: {}, threads: {} });
+      const state = await db.loadRoundState(eventKey, round, DB_IS_TEST);
 
       const toDeleteThreads  = Object.values(state.threads  || {}).map((x) => x.id).filter(Boolean);
       const toDeleteChannels = Object.values(state.channels || {}).map((x) => x.id).filter(Boolean);
@@ -1491,7 +1405,7 @@ client.on("interactionCreate", async (interaction) => {
         } catch (e) { console.log(`Failed to delete channel ${id}: ${String(e?.message || e)}`); }
       }
 
-      if (deleteState && fs.existsSync(statePath)) fs.unlinkSync(statePath);
+      if (deleteState) await db.deleteRoundState(eventKey, round, DB_IS_TEST);
 
       return interaction.editReply(
         `Teardown complete ✅\nDeleted ${deletedThreads} threads and ${deletedChannels} channels.`
@@ -1500,7 +1414,7 @@ client.on("interactionCreate", async (interaction) => {
 
     // ---- /register ----
     if (interaction.commandName === "register") {
-      const eventKey = eventKeyForCategory(interaction.channel?.parentId);
+      const eventKey = await eventKeyForCategory(interaction.channel?.parentId);
       if (!eventKey) {
         return interaction.editReply("Please run this in an event's #registration channel.");
       }
@@ -1509,16 +1423,16 @@ client.on("interactionCreate", async (interaction) => {
       const ign  = interaction.options.getString("ign");
       const now  = new Date().toISOString();
 
-      const catState = loadJson(categoryStatePath(eventKey), { categoryId: null, standingChannels: {}, maxTeamSize: 5 });
+      const catState = await db.loadCategoryState(eventKey, DB_IS_TEST);
       const maxTeamSize = catState.maxTeamSize ?? 5;
 
-      const regState = loadRegistrations(eventKey);
-      const existing  = regState.entries[interaction.user.id];
+      const entries  = await db.getRegistrationEntries(eventKey, DB_IS_TEST);
+      const existing  = entries[interaction.user.id];
       // "Already on this team" means updating details (IGN, etc), not joining anew —
       // switching teams (or a fresh registration) is subject to the capacity check below.
       const alreadyOnThisTeam = existing?.team === team && existing?.status !== "rejected";
 
-      const otherMembersCount = Object.entries(regState.entries).filter(
+      const otherMembersCount = Object.entries(entries).filter(
         ([userId, e]) => e.team === team && e.status !== "rejected" && userId !== interaction.user.id
       ).length;
 
@@ -1526,15 +1440,14 @@ client.on("interactionCreate", async (interaction) => {
         return interaction.editReply(`Team "${team}" is full (max ${maxTeamSize} players).`);
       }
 
-      regState.entries[interaction.user.id] = {
+      await db.upsertRegistration(eventKey, interaction.user.id, {
         team,
         ign,
         status: "pending",
         registeredAt: existing?.registeredAt ?? now,
         updatedAt: now,
         reviewedBy: null,
-      };
-      saveJson(registrationsStatePath(eventKey), regState);
+      }, DB_IS_TEST);
 
       // Only notify when a genuinely new member pushes the team to exactly the cap —
       // not on every re-registration of players already counted.
@@ -1547,21 +1460,20 @@ client.on("interactionCreate", async (interaction) => {
 
     // ---- /unregister ----
     if (interaction.commandName === "unregister") {
-      const eventKey = eventKeyForCategory(interaction.channel?.parentId);
+      const eventKey = await eventKeyForCategory(interaction.channel?.parentId);
       if (!eventKey) {
         return interaction.editReply("Please run this in an event's #registration channel.");
       }
 
-      const regState = loadRegistrations(eventKey);
-      const existing = regState.entries[interaction.user.id];
+      const entries = await db.getRegistrationEntries(eventKey, DB_IS_TEST);
+      const existing = entries[interaction.user.id];
       if (!existing) {
         return interaction.editReply("You're not registered for this event.");
       }
 
       const wasApproved = existing.status === "approved";
       const team = existing.team;
-      delete regState.entries[interaction.user.id];
-      saveJson(registrationsStatePath(eventKey), regState);
+      await db.deleteRegistration(eventKey, interaction.user.id, DB_IS_TEST);
 
       if (wasApproved) await syncRegisteredTeamsChannel(guild, eventKey);
 
@@ -1574,9 +1486,9 @@ client.on("interactionCreate", async (interaction) => {
       const eventKey = interaction.options.getString("event");
 
       if (sub === "list") {
-        const regState = loadRegistrations(eventKey);
+        const entries = await db.getRegistrationEntries(eventKey, DB_IS_TEST);
         const byTeam = {};
-        for (const [userId, e] of Object.entries(regState.entries)) {
+        for (const [userId, e] of Object.entries(entries)) {
           (byTeam[e.team] ||= []).push({ userId, ...e });
         }
         const teamNames = Object.keys(byTeam).sort((a, b) => a.localeCompare(b));
@@ -1604,13 +1516,8 @@ client.on("interactionCreate", async (interaction) => {
 
       if (sub === "approve_player") {
         const player = interaction.options.getUser("player");
-        const regState = loadRegistrations(eventKey);
-        const entry = regState.entries[player.id];
-        if (!entry) return interaction.editReply(`No registration found for ${player.tag}.`);
-        entry.status = "approved";
-        entry.reviewedBy = interaction.user.id;
-        entry.updatedAt = new Date().toISOString();
-        saveJson(registrationsStatePath(eventKey), regState);
+        const updated = await db.setRegistrationStatus(eventKey, player.id, "approved", interaction.user.id, DB_IS_TEST);
+        if (!updated) return interaction.editReply(`No registration found for ${player.tag}.`);
         await syncRegisteredTeamsChannel(guild, eventKey);
         return interaction.editReply(`Approved ${player.tag} for "${eventKey}".`);
       }
@@ -1618,13 +1525,8 @@ client.on("interactionCreate", async (interaction) => {
       if (sub === "reject") {
         const player = interaction.options.getUser("player");
         const reason = interaction.options.getString("reason");
-        const regState = loadRegistrations(eventKey);
-        const entry = regState.entries[player.id];
-        if (!entry) return interaction.editReply(`No registration found for ${player.tag}.`);
-        entry.status = "rejected";
-        entry.reviewedBy = interaction.user.id;
-        entry.updatedAt = new Date().toISOString();
-        saveJson(registrationsStatePath(eventKey), regState);
+        const updated = await db.setRegistrationStatus(eventKey, player.id, "rejected", interaction.user.id, DB_IS_TEST);
+        if (!updated) return interaction.editReply(`No registration found for ${player.tag}.`);
         await syncRegisteredTeamsChannel(guild, eventKey);
         return interaction.editReply(
           `Rejected ${player.tag} for "${eventKey}".${reason ? ` Reason: ${reason}` : ""}`
@@ -1632,8 +1534,8 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (sub === "export") {
-        const regState = loadRegistrations(eventKey);
-        const approved = Object.entries(regState.entries).filter(([, e]) => e.status === "approved");
+        const entries = await db.getRegistrationEntries(eventKey, DB_IS_TEST);
+        const approved = Object.entries(entries).filter(([, e]) => e.status === "approved");
         const byTeam = {};
         for (const [userId, e] of approved) {
           (byTeam[e.team] ||= []).push({ userId, ign: e.ign });

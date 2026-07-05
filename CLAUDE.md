@@ -55,19 +55,21 @@ src/config/
   we did this once (category/state JSON living inside `src/config/`) and
   reverted it because it broke the "config directory = what's in git"
   invariant.
-- `data/<event>/category.json` — event-level state (`categoryId`,
-  `standingChannels`, `maxTeamSize`), written by `/setup event`. Gitignored.
-- `data/<event>/[<round>/]state.json` — round-level state (`channels`,
-  `threads`), written by `/setup maps`. Gitignored.
-- `data/<event>/registrations.json` — player self-registration state
-  (`entries`, `registeredTeamsMessageId`, `pendingReviews`), written by
-  `/register`/`/registrations`. Gitignored.
-- None of these are **backed up**. If the Lightsail instance is ever lost
-  again, this state is lost with it. Partial self-healing exists:
-  `resolveEventCategory` falls back to searching Discord by category *name*
-  if there's no cached ID, so `/setup event` re-run after a rebuild will
-  re-discover an existing category. There's no equivalent name-based
-  recovery for round-level map channels/threads or for registrations.
+- All bot-generated runtime state now lives in Postgres (`src/db.js`), not
+  local JSON — this replaced the old `data/<event>/*.json` tree (2026-07-05):
+  - `event_category_state` — event-level state (`categoryId`,
+    `standingChannels`, `maxTeamSize`), written by `/setup event`.
+  - `event_round_state` — round-level state (`channels`, `threads`), written
+    by `/setup maps`, keyed by `(event_key, round_key)` (`round_key = ''` for
+    single-round events).
+  - `registrations`, `registration_pending_reviews`, `event_registration_state`
+    — player self-registration state, written by `/register`/`/registrations`.
+  - All three are covered by the same RDS automated backups as the
+    matchmaking tables (see "Known constraints" below) — this was the whole
+    point of the move, replacing the old unbacked-up local JSON files.
+    `resolveEventCategory`'s name-based fallback (searching Discord by
+    category *name* if there's no stored ID) is unchanged and still the
+    recovery path for a stale/missing row, same as before.
 
 ### Commands
 
@@ -138,12 +140,21 @@ src/config/
 
 ## Known constraints / non-negotiables
 
-- **Postgres/RDS stays in eu-west-2**, untouched, while the bot itself runs
-  in us-east-1 (cross-region). Deliberate — the matchmaking/ELO feature set
-  that depends on it is WIP and not worth migrating a database for yet. DB
-  connection failures at startup are caught and logged, not fatal — `/setup
-  event`/`/setup maps`/`/teardown` never depended on Postgres and must not
-  start depending on it.
+- **Postgres/RDS is co-located in us-east-1** (`furiosa-db`, RDS Postgres 17,
+  `db.t4g.micro`), replacing a prior eu-west-2 instance that was torn down
+  (2026-07-05). It's a publicly-accessible RDS instance with a security
+  group restricted to the Lightsail box's static IP (no VPC peering), 7-day
+  automated backups, holding two databases (`furyroad`/`furyroad_test`, via
+  `PGDATABASE_PROD`/`PGDATABASE_TEST`) mirrored across both the prod and test
+  systemd instances. This is now load-bearing for **all** bot runtime state,
+  not just matchmaking/ELO — see "Config vs. runtime state" above. The prior
+  non-negotiable ("`/setup event`/`/setup maps`/`/teardown` must never depend
+  on Postgres") is **retired**: it existed because the DB used to be an
+  unreliable, cross-region, WIP-only dependency; that's no longer true, and
+  those commands now do depend on it. DB connection/schema-init failures at
+  startup are still caught and logged rather than crashing the process, but
+  a DB outage will now cause `/setup`/`/teardown`/`/register`/`/registrations`
+  to error out on use, not just matchmaking commands.
 - **`EVENT_CATEGORY_ID` env var was removed entirely.** It used to be a
   bot-level `.env` setting for something that's actually per-event — replaced
   by the category/round model above. `/lobby`/`/matchmake`/`/create_match`
@@ -161,6 +172,11 @@ src/config/
   but was removed: where team-ready Approve/Reject notifications post is now
   the per-event `#applications` standing channel (created by `/setup event`,
   same as `#registration` etc.), not a single bot-wide channel.
+- **`DB_IS_TEST_INSTANCE` env var (2026-07-05)**: fixed per systemd instance
+  (unset/`false` on `furiosa-prod`, `true` on `furiosa-test`), not a
+  per-command flag like matchmaking's `test:` option. Routes that instance's
+  registrations/category/round-state reads and writes to `PGDATABASE_TEST`
+  instead of `PGDATABASE_PROD` on the shared `furiosa-db` instance.
 - No automated Lightsail snapshots — deliberate cost decision for a hobby
   project. Rebuilding from git + a fresh instance is the accepted recovery
   path, not snapshot restore.
@@ -188,17 +204,16 @@ src/config/
 - **Matchmake/ELO rearchitecture**: give `/lobby`/`/matchmake`/`/create_match`
   their own way to resolve a category (mirroring `/setup event`'s model)
   instead of the removed `EVENT_CATEGORY_ID`. Not started.
-- **Runtime state durability**: `data/` is unbacked-up and self-healing only
-  for the category (by name lookup), not for round-level map channels/threads
-  or registrations. Possible fixes, not implemented: periodic sync of `data/`
-  to S3, or move this tracking state into the existing RDS Postgres instance
-  instead of local JSON files.
-- **Registrations: JSON now, DB later.** `/register`/`/registrations` are
-  deliberately built on `data/<event>/registrations.json` for a first
-  iteration — fast, zero new infra, consistent with the rest of the bot's
-  state model. A future iteration should likely move this to a proper
-  database (the existing eu-west-2 RDS instance is the obvious candidate,
-  though it's currently WIP/matchmaking-only). Not started.
+- **Runtime state durability — done (2026-07-05).** All bot runtime state
+  (category state, round state, registrations) moved from local
+  `data/<event>/*.json` to the new us-east-1 RDS instance — see "Config vs.
+  runtime state" above. Covered by RDS automated backups now. No backfill was
+  done of the old JSON data (explicit call at the time); existing events'
+  categories/channels/threads/registrations need re-registering, though
+  `/setup event`/`/setup maps` will still find existing Discord
+  categories/channels by *name* if re-run.
+- **Registrations: JSON now, DB later — done (2026-07-05).** Moved to
+  Postgres alongside category/round state, same migration as above.
 - **Duplicate-looking configs**: `src/config/bop/` and
   `src/config/balance-of-power/` both have `event.name: "Balance of Power"` —
   never reconciled/deduplicated this session. Worth checking with the user
