@@ -3,10 +3,16 @@
 Furiosa runs as a systemd service on a single Ubuntu box (AWS Lightsail).
 This directory holds the artifacts needed to (re)build that box from scratch.
 
-- `furiosa.service` — systemd unit, runs the bot as the non-root `furiosa`
-  user from `/opt/furiosa`, auto-restarts on crash, starts on boot.
+- `furiosa.service.tmpl` — systemd unit template, rendered by `bootstrap.sh`
+  (substituting `{{APP_USER}}`/`{{APP_DIR}}`) into `/etc/systemd/system/<service-name>.service`.
+  Runs the bot as the non-root `furiosa` user from `/opt/furiosa` by default,
+  auto-restarts on crash, starts on boot.
 - `bootstrap.sh` — idempotent setup script. Safe to re-run: first run
   bootstraps a fresh box, later runs (e.g. after `git push`) redeploy new code.
+  Accepts `APP_USER`/`APP_DIR`/`REPO_URL`/`NODE_MAJOR`/`SERVICE_NAME` env var
+  overrides (all default to today's prod values) so the same script can also
+  stand up a second, independent instance — see "Running a second (test)
+  instance" below.
 
 ## A. Lightsail console (manual)
 
@@ -94,9 +100,52 @@ sudo bash /opt/furiosa/deploy/bootstrap.sh
 It pulls latest, reinstalls dependencies, and restarts the service. It will
 never touch an existing `.env`.
 
+## Running a second (test) instance on the same box
+
+To iterate on features (e.g. registration) without risking the live Fury Road
+server, run a second fully independent instance pointed at a separate Discord
+test server + bot application. It reuses the same `furiosa` system user but
+gets its own checkout, `.env`, `data/`, and systemd unit — `bootstrap.sh`'s
+env var overrides make this the same script, not a fork of it.
+
+1. First time only, install it:
+   ```
+   sudo APP_DIR=/opt/furiosa-test SERVICE_NAME=furiosa-test \
+     bash /opt/furiosa/deploy/bootstrap.sh
+   ```
+   (Omitting `APP_USER` reuses the existing `furiosa` user/home; omitting
+   `REPO_URL`/`NODE_MAJOR` reuses prod's values — override only if the test
+   checkout genuinely needs a different fork/branch or Node version.)
+2. This clones the repo fresh into `/opt/furiosa-test`, creates
+   `/opt/furiosa-test/.env` from `.env.example` (a placeholder, since the dir
+   is new), and installs+enables+starts a unit named `furiosa-test.service`.
+3. Fill in `/opt/furiosa-test/.env` with the **test server's** own
+   `DISCORD_TOKEN`, `GUILD_ID`, `EVENT_STAFF_ROLE_ID`, `WARBOY_ROLE_ID`,
+   `EVENT_APPLICATIONS_CHANNEL_ID` — a separate bot application registered
+   against the test Discord server (own token, Server Members Intent
+   enabled, invited to that server). `PGHOST`/`PGDATABASE_*`/`PGUSER`/
+   `PGPASSWORD` can simply mirror prod's `.env` values; the DB isn't
+   exercised by registration/setup/teardown, and matchmaking commands (which
+   do touch it) already fail non-fatally.
+4. `sudo chmod 600 /opt/furiosa-test/.env` then `sudo systemctl restart furiosa-test`.
+5. Verify: `sudo systemctl status furiosa-test`, `sudo journalctl -u
+   furiosa-test -f` (confirm gateway login), then in the test Discord server
+   exercise `/setup event ... dryrun:true`, `/register`, `/registrations`,
+   `/unregister`.
+
+**Redeploying the test instance later**, run from within the test checkout:
+```
+sudo APP_DIR=/opt/furiosa-test SERVICE_NAME=furiosa-test \
+  bash /opt/furiosa-test/deploy/bootstrap.sh
+```
+
+**Redeploying prod is unchanged** — still just `sudo bash
+/opt/furiosa/deploy/bootstrap.sh` with no env vars, exercising the same
+defaults as before this feature existed.
+
 ## Known risks / follow-ups (not addressed by this setup)
 
 - **`data/<event>/category.json`, `data/<event>[/<round>]/state.json`, and `data/<event>/registrations.json` are local-only and not backed up.** These files track the event's category/standing channels, each round's map channels/threads, and player registrations/approvals, for `/setup maps`, `/teardown`, `/register`, and `/registrations`. They live outside `src/config/` deliberately (config stays a pure, git-managed tree; `data/` is the bot's own generated state) and are gitignored, but that also means if this box is ever lost again, that tracking state is lost with it — the same failure mode as the previous incident. `registrations.json` is arguably the highest-stakes of the three, since it holds live player sign-ups rather than just regenerable tracking IDs. A future fix could sync `data/` to S3 on a schedule, or move this state into the existing RDS Postgres instance.
 - **`Restart=on-failure`** won't restart the service on a clean exit (e.g. an
   unhandled rejection handler that calls `process.exit(0)`). Switch to
-  `Restart=always` in `furiosa.service` if that turns out to matter.
+  `Restart=always` in `furiosa.service.tmpl` if that turns out to matter.

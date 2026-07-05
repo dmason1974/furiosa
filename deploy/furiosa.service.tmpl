@@ -5,10 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=furiosa
-WorkingDirectory=/opt/furiosa
-EnvironmentFile=/opt/furiosa/.env
-ExecStart=/usr/bin/node /opt/furiosa/src/index.js
+User={{APP_USER}}
+WorkingDirectory={{APP_DIR}}
+EnvironmentFile={{APP_DIR}}/.env
+ExecStart=/usr/bin/node {{APP_DIR}}/src/index.js
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

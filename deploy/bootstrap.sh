@@ -3,10 +3,11 @@
 # Safe to re-run: first run bootstraps the box, later runs redeploy new code.
 set -euo pipefail
 
-APP_USER="furiosa"
-APP_DIR="/opt/furiosa"
-REPO_URL="https://github.com/dmason1974/furiosa.git"
-NODE_MAJOR="20"
+APP_USER="${APP_USER:-furiosa}"
+APP_DIR="${APP_DIR:-/opt/furiosa}"
+REPO_URL="${REPO_URL:-https://github.com/dmason1974/furiosa.git}"
+NODE_MAJOR="${NODE_MAJOR:-20}"
+SERVICE_NAME="${SERVICE_NAME:-furiosa}"
 
 if [ "$EUID" -ne 0 ]; then
   echo "Run this script as root (sudo bash bootstrap.sh)." >&2
@@ -49,18 +50,21 @@ if [ ! -f "$APP_DIR/.env" ]; then
   chown "$APP_USER:$APP_USER" "$APP_DIR/.env"
   chmod 600 "$APP_DIR/.env"
   echo "!!! Created ${APP_DIR}/.env from .env.example — fill in real secrets, then run:"
-  echo "!!!   sudo systemctl restart furiosa"
+  echo "!!!   sudo systemctl restart ${SERVICE_NAME}"
 fi
 
 # --- Dependencies ---
 echo "Installing dependencies..."
 sudo -u "$APP_USER" npm ci --omit=dev --prefix "$APP_DIR"
 
-# --- systemd unit ---
-cp "$APP_DIR/deploy/furiosa.service" /etc/systemd/system/furiosa.service
+# --- systemd unit (render from template, don't just copy) ---
+sed -e "s#{{APP_USER}}#$APP_USER#g" \
+    -e "s#{{APP_DIR}}#$APP_DIR#g" \
+    "$APP_DIR/deploy/furiosa.service.tmpl" \
+    > "/etc/systemd/system/${SERVICE_NAME}.service"
 systemctl daemon-reload
-systemctl enable furiosa
+systemctl enable "$SERVICE_NAME"
 
 # --- (Re)start ---
-systemctl restart furiosa
-systemctl status furiosa --no-pager
+systemctl restart "$SERVICE_NAME"
+systemctl status "$SERVICE_NAME" --no-pager
