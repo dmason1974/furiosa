@@ -631,22 +631,35 @@ async function publishRulesIndex(guild, eventKey, rulesChannelId, dryrun) {
     const existingMsg = existingId ? await rulesChannel.messages.fetch(existingId).catch(() => null) : null;
 
     const messages = [...(await channel.messages.fetch({ limit: 100 })).values()]
-      .sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+      .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
+      .filter((m) => !m.author.bot);
+
     const body = messages
-      .filter((m) => !m.author.bot && m.content)
       .map((m) => m.content)
+      .filter(Boolean)
       .join("\n\n")
       .trim() || "_(no definition content found)_";
+
+    // Re-upload image attachments rather than linking the source CDN URL —
+    // those URLs carry a signed, expiring query string, so a pasted link
+    // would eventually render as a broken image.
+    const images = messages.flatMap((m) =>
+      [...m.attachments.values()]
+        .filter((a) => (a.contentType || "").startsWith("image/"))
+        .map((a) => ({ attachment: a.url, name: a.name || "image.png" }))
+    );
 
     let text = `**${titleCaseTerm(term)}**\n${body}`;
     if (text.length > RULES_MESSAGE_MAX_LENGTH) text = `${text.slice(0, RULES_MESSAGE_MAX_LENGTH - 3)}...`;
 
+    const payload = { content: text, files: images };
+
     if (existingMsg) {
-      await existingMsg.edit(text);
+      await existingMsg.edit(payload);
       newDefinitions[term] = { messageId: existingMsg.id };
       updated++;
     } else {
-      const sent = await rulesChannel.send(text);
+      const sent = await rulesChannel.send(payload);
       newDefinitions[term] = { messageId: sent.id };
       created++;
     }
