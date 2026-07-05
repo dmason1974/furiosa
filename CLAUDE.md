@@ -79,6 +79,20 @@ src/config/
   private team threads (the original, longest-standing feature). Requires
   the category to already exist (via `/setup event`) — errors with a clear
   message instead of silently creating one.
+- `/setup rules_index event:<key> [dryrun]` (2026-07-05) — reads the
+  server-wide `definitions` category (one channel per rules term, e.g.
+  `☢️-act-of-war`), publishes each as its own message in that event's
+  `#rules` channel, and posts/pins an index message linking to all of them.
+  Idempotent — message IDs are tracked in `event_rules_index` (Postgres) so
+  re-running edits existing messages instead of duplicating them; the
+  definition *text* itself is always re-read live from the `definitions`
+  channels, never cached in Postgres. Factored as a standalone
+  `publishRulesIndex()` helper, not entangled with `/setup event`'s
+  category-creation logic, since this may get promoted to a server-level
+  (non-event-scoped) command later. Requires the bot's `MessageContent`
+  privileged intent (enabled 2026-07-05) to read non-bot message content in
+  the `definitions` channels — without it Discord silently redacts content
+  to `""` for any message the bot didn't author.
 - `/teardown maps event:<key> [round:<key>] [dryrun] [delete_state]` —
   deletes a round's map channels/threads. Optionally deletes its `state.json`.
 - `/teardown event event:<key> [dryrun]` — deletes the category + standing

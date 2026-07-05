@@ -180,7 +180,7 @@ function validateConfig(cfg) {
 // Discord client
 // ---------------------------
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.MessageContent],
 });
 
 // ---------------------------
@@ -209,6 +209,13 @@ const setupCommand = new SlashCommandBuilder()
         o.setName("round").setDescription("Round subdirectory name (omit if the event has no rounds)")
       )
       .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without creating anything"))
+  )
+  .addSubcommand((s) =>
+    s.setName("rules_index").setDescription("Publish the definitions category as an index in #rules")
+      .addStringOption((o) =>
+        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+      )
+      .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without posting/editing anything"))
   );
 
 const teardownCommand = new SlashCommandBuilder()
@@ -554,6 +561,118 @@ async function findChannelByNameInCategory(guild, categoryId, channelName) {
   return channels.find(
     (c) => c && c.type === ChannelType.GuildText && c.parentId === categoryId && c.name === channelName
   );
+}
+
+// ---------------------------
+// Rules index (definitions -> #rules)
+// ---------------------------
+const DEFINITIONS_CATEGORY_NAME = "definitions";
+const RULES_MESSAGE_MAX_LENGTH = 1900; // Discord's hard cap is 2000; leave headroom for the heading/ellipsis.
+
+function definitionTermFromChannelName(name) {
+  // Strip a leading emoji (any codepoints, incl. ZWJ sequences) + separator,
+  // e.g. "☢️-act-of-war" -> "act-of-war". Emoji never contain a literal "-",
+  // so the first hyphen is always the boundary.
+  return name.replace(/^\S*?-/, "");
+}
+
+function titleCaseTerm(term) {
+  return term.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Kept standalone (not folded into the /setup event handler) so it can be
+// promoted to a server-level, non-event-scoped command later without rework.
+async function publishRulesIndex(guild, eventKey, dryrun) {
+  const allChannels = await guild.channels.fetch();
+  const defCategory = allChannels.find(
+    (c) => c && c.type === ChannelType.GuildCategory && c.name.toLowerCase() === DEFINITIONS_CATEGORY_NAME
+  );
+  if (!defCategory) throw new Error(`No "${DEFINITIONS_CATEGORY_NAME}" category found on this server.`);
+
+  const defChannels = [...allChannels.values()]
+    .filter((c) => c && c.type === ChannelType.GuildText && c.parentId === defCategory.id)
+    .map((channel) => ({ channel, term: definitionTermFromChannelName(channel.name) }))
+    .sort((a, b) => a.term.localeCompare(b.term));
+
+  const catState = await db.loadCategoryState(eventKey, DB_IS_TEST);
+  const rulesChannelId = catState.standingChannels?.rules?.id;
+  if (!rulesChannelId) throw new Error(`#rules channel not set up yet for "${eventKey}" — run \`/setup event\` first.`);
+  const rulesChannel = await guild.channels.fetch(rulesChannelId).catch(() => null);
+  if (!rulesChannel) throw new Error(`#rules channel for "${eventKey}" could not be fetched.`);
+
+  const indexState = await db.loadRulesIndexState(eventKey, DB_IS_TEST);
+  const planLines = [];
+  const newDefinitions = {};
+  let created = 0, updated = 0;
+
+  for (const { channel, term } of defChannels) {
+    const existingId = indexState.definitions?.[term]?.messageId;
+    const existingMsg = existingId ? await rulesChannel.messages.fetch(existingId).catch(() => null) : null;
+
+    if (dryrun) {
+      planLines.push(`${existingMsg ? "update" : "create"}: ${term}`);
+      newDefinitions[term] = { messageId: existingMsg?.id ?? null };
+      if (existingMsg) updated++; else created++;
+      continue;
+    }
+
+    const messages = [...(await channel.messages.fetch({ limit: 100 })).values()]
+      .sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+    const body = messages
+      .filter((m) => !m.author.bot && m.content)
+      .map((m) => m.content)
+      .join("\n\n")
+      .trim() || "_(no definition content found)_";
+
+    let text = `**${titleCaseTerm(term)}**\n${body}`;
+    if (text.length > RULES_MESSAGE_MAX_LENGTH) text = `${text.slice(0, RULES_MESSAGE_MAX_LENGTH - 3)}...`;
+
+    if (existingMsg) {
+      await existingMsg.edit(text);
+      newDefinitions[term] = { messageId: existingMsg.id };
+      updated++;
+    } else {
+      const sent = await rulesChannel.send(text);
+      newDefinitions[term] = { messageId: sent.id };
+      created++;
+    }
+  }
+
+  const indexLines = defChannels.map(({ term }) => {
+    const messageId = newDefinitions[term]?.messageId;
+    const label = titleCaseTerm(term);
+    return messageId
+      ? `- [${label}](https://discord.com/channels/${guild.id}/${rulesChannelId}/${messageId})`
+      : `- ${label} (pending)`;
+  });
+  const indexBody = ["**Definitions Index**", "", ...indexLines].join("\n");
+
+  if (dryrun) {
+    planLines.push(indexState.indexMessageId ? "update: index message" : "create + pin: index message");
+    return { dryrun: true, planLines, created, updated, total: defChannels.length };
+  }
+
+  let indexMessage = indexState.indexMessageId
+    ? await rulesChannel.messages.fetch(indexState.indexMessageId).catch(() => null)
+    : null;
+  let indexAction;
+
+  if (indexMessage) {
+    await indexMessage.edit(indexBody);
+    indexAction = "updated";
+  } else {
+    indexMessage = await rulesChannel.send(indexBody);
+    await indexMessage.pin().catch((e) => console.log(`Failed to pin rules index message: ${String(e?.message || e)}`));
+    indexAction = "created and pinned";
+  }
+
+  await db.saveRulesIndexState(
+    eventKey,
+    { indexMessageId: indexMessage.id, definitions: newDefinitions },
+    DB_IS_TEST
+  );
+
+  return { dryrun: false, created, updated, total: defChannels.length, indexAction };
 }
 
 // ---------------------------
@@ -1342,6 +1461,24 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.editReply(
         `Done ✅\nCreated: ${createdChannels} channels, ${createdThreads} threads\n` +
         `Reused: ${reusedChannels} channels, ${reusedThreads} threads`
+      );
+    }
+
+    // ---- /setup rules_index ----
+    if (interaction.commandName === "setup" && interaction.options.getSubcommand() === "rules_index") {
+      const eventKey = interaction.options.getString("event");
+      const dryrun   = interaction.options.getBoolean("dryrun") ?? false;
+
+      const result = await publishRulesIndex(guild, eventKey, dryrun);
+
+      if (dryrun) {
+        return interaction.editReply(
+          `Dry-run ✅\n\nPlan:\n${result.planLines.map((l) => `• ${l}`).join("\n")}`
+        );
+      }
+      return interaction.editReply(
+        `Done ✅\n${result.total} definition(s) — created: ${result.created}, updated: ${result.updated}\n` +
+        `Index message ${result.indexAction} in #rules.`
       );
     }
 

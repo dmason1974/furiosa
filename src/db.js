@@ -152,6 +152,13 @@ async function initSchema(isTest = false) {
       updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (event_key, round_key)
     );
+
+    CREATE TABLE IF NOT EXISTS event_rules_index (
+      event_key        TEXT        PRIMARY KEY,
+      index_message_id TEXT,
+      definitions      JSONB       NOT NULL DEFAULT '{}',
+      updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 }
 
@@ -638,6 +645,25 @@ async function findLingeringRoundStates(eventKey, isTest = false) {
   return rows.map((r) => (r.round_key === "" ? "(no round)" : r.round_key));
 }
 
+async function loadRulesIndexState(eventKey, isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT index_message_id, definitions FROM event_rules_index WHERE event_key = $1`,
+    [eventKey]
+  );
+  if (!rows[0]) return { indexMessageId: null, definitions: {} };
+  return { indexMessageId: rows[0].index_message_id, definitions: rows[0].definitions };
+}
+
+async function saveRulesIndexState(eventKey, state, isTest = false) {
+  await getPool(isTest).query(
+    `INSERT INTO event_rules_index (event_key, index_message_id, definitions, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (event_key) DO UPDATE
+       SET index_message_id = EXCLUDED.index_message_id, definitions = EXCLUDED.definitions, updated_at = NOW()`,
+    [eventKey, state.indexMessageId ?? null, JSON.stringify(state.definitions || {})]
+  );
+}
+
 module.exports = {
   getPool, initSchema,
   upsertPlayer, getPlayers, getRatings,
@@ -650,4 +676,5 @@ module.exports = {
   addPendingReview, getPendingReview, deletePendingReview,
   loadCategoryState, saveCategoryState, deleteCategoryState, getEventKeyForCategory,
   loadRoundState, saveRoundState, deleteRoundState, findLingeringRoundStates,
+  loadRulesIndexState, saveRulesIndexState,
 };
