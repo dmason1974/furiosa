@@ -649,7 +649,7 @@ async function publishRulesIndex(guild, eventKey, rulesChannelId, dryrun) {
         .map((a) => ({ attachment: a.url, name: a.name || "image.png" }))
     );
 
-    let text = `**${titleCaseTerm(term)}**\n${body}`;
+    let text = `# ${titleCaseTerm(term)}\n${body}`;
     if (text.length > RULES_MESSAGE_MAX_LENGTH) text = `${text.slice(0, RULES_MESSAGE_MAX_LENGTH - 3)}...`;
 
     const payload = { content: text, files: images };
