@@ -74,25 +74,32 @@ src/config/
 ### Commands
 
 - `/setup event event:<key> [dryrun]` — creates the category + 4 standing
-  channels if missing. Idempotent.
+  channels if missing. Idempotent. Also publishes the rules index (below) as
+  its last step every time it runs.
 - `/setup maps event:<key> [round:<key>] [dryrun]` — creates map channels +
   private team threads (the original, longest-standing feature). Requires
   the category to already exist (via `/setup event`) — errors with a clear
   message instead of silently creating one.
-- `/setup rules_index event:<key> [dryrun]` (2026-07-05) — reads the
-  server-wide `definitions` category (one channel per rules term, e.g.
-  `☢️-act-of-war`), publishes each as its own message in that event's
-  `#rules` channel, and posts/pins an index message linking to all of them.
-  Idempotent — message IDs are tracked in `event_rules_index` (Postgres) so
-  re-running edits existing messages instead of duplicating them; the
+- **Rules index (2026-07-05, part of `/setup event`, not a separate
+  command)**: reads the server-wide `definitions` category (one channel per
+  rules term, e.g. `☢️-act-of-war`), publishes each as its own message in
+  that event's `#rules` channel, and posts/pins an index message linking to
+  all of them, with the index message created *first* (as a placeholder,
+  then edited once every definition's message ID is known) so it's always
+  the chronologically earliest message in `#rules`, not the last. Idempotent
+  — message IDs are tracked in `event_rules_index` (Postgres) so re-running
+  `/setup event` edits existing messages instead of duplicating them; the
   definition *text* itself is always re-read live from the `definitions`
-  channels, never cached in Postgres. Factored as a standalone
-  `publishRulesIndex()` helper, not entangled with `/setup event`'s
-  category-creation logic, since this may get promoted to a server-level
-  (non-event-scoped) command later. Requires the bot's `MessageContent`
-  privileged intent (enabled 2026-07-05) to read non-bot message content in
-  the `definitions` channels — without it Discord silently redacts content
-  to `""` for any message the bot didn't author.
+  channels, never cached in Postgres. If no `definitions` category exists on
+  that server (e.g. the test server, which has none), this step is skipped
+  gracefully — noted in the reply, never fails `/setup event` itself.
+  Factored as a standalone `publishRulesIndex()` helper (called from, but
+  not entangled with, the `/setup event` handler) since this may get
+  promoted to a server-level (non-event-scoped) command later. Requires the
+  bot's `MessageContent` privileged intent (enabled 2026-07-05) to read
+  non-bot message content in the `definitions` channels — without it
+  Discord silently redacts content to `""` for any message the bot didn't
+  author.
 - `/teardown maps event:<key> [round:<key>] [dryrun] [delete_state]` —
   deletes a round's map channels/threads. Optionally deletes its `state.json`.
 - `/teardown event event:<key> [dryrun]` — deletes the category + standing

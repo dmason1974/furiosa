@@ -209,13 +209,6 @@ const setupCommand = new SlashCommandBuilder()
         o.setName("round").setDescription("Round subdirectory name (omit if the event has no rounds)")
       )
       .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without creating anything"))
-  )
-  .addSubcommand((s) =>
-    s.setName("rules_index").setDescription("Publish the definitions category as an index in #rules")
-      .addStringOption((o) =>
-        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
-      )
-      .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without posting/editing anything"))
   );
 
 const teardownCommand = new SlashCommandBuilder()
@@ -580,41 +573,62 @@ function titleCaseTerm(term) {
   return term.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// Kept standalone (not folded into the /setup event handler) so it can be
-// promoted to a server-level, non-event-scoped command later without rework.
-async function publishRulesIndex(guild, eventKey, dryrun) {
+// Called from the /setup event handler (not a separate command) — kept as
+// its own function so it can still be promoted to a server-level,
+// non-event-scoped command later without rework. Never throws: a missing
+// "definitions" category (e.g. the test server, which has none) is a
+// graceful skip so it can't break /setup event itself.
+async function publishRulesIndex(guild, eventKey, rulesChannelId, dryrun) {
   const allChannels = await guild.channels.fetch();
   const defCategory = allChannels.find(
     (c) => c && c.type === ChannelType.GuildCategory && c.name.toLowerCase() === DEFINITIONS_CATEGORY_NAME
   );
-  if (!defCategory) throw new Error(`No "${DEFINITIONS_CATEGORY_NAME}" category found on this server.`);
+  if (!defCategory) {
+    return { skipped: true, reason: `no "${DEFINITIONS_CATEGORY_NAME}" category found on this server` };
+  }
 
   const defChannels = [...allChannels.values()]
     .filter((c) => c && c.type === ChannelType.GuildText && c.parentId === defCategory.id)
     .map((channel) => ({ channel, term: definitionTermFromChannelName(channel.name) }))
     .sort((a, b) => a.term.localeCompare(b.term));
 
-  const catState = await db.loadCategoryState(eventKey, DB_IS_TEST);
-  const rulesChannelId = catState.standingChannels?.rules?.id;
-  if (!rulesChannelId) throw new Error(`#rules channel not set up yet for "${eventKey}" — run \`/setup event\` first.`);
+  if (!rulesChannelId) return { skipped: true, reason: "#rules channel doesn't exist yet" };
   const rulesChannel = await guild.channels.fetch(rulesChannelId).catch(() => null);
-  if (!rulesChannel) throw new Error(`#rules channel for "${eventKey}" could not be fetched.`);
+  if (!rulesChannel) return { skipped: true, reason: "#rules channel could not be fetched" };
 
   const indexState = await db.loadRulesIndexState(eventKey, DB_IS_TEST);
-  const planLines = [];
-  const newDefinitions = {};
   let created = 0, updated = 0;
 
+  if (dryrun) {
+    const planLines = defChannels.map(({ term }) => {
+      const existingId = indexState.definitions?.[term]?.messageId;
+      if (existingId) updated++; else created++;
+      return `${existingId ? "update" : "create"}: ${term}`;
+    });
+    planLines.push(indexState.indexMessageId ? "update: index message (posted first)" : "create + pin: index message (posted first)");
+    return { skipped: false, dryrun: true, planLines, created, updated, total: defChannels.length };
+  }
+
+  // 1. Ensure the index message exists FIRST (placeholder if new) so it's
+  //    chronologically the earliest message in the channel — editing its
+  //    content later (step 3) doesn't move its position.
+  let indexMessage = indexState.indexMessageId
+    ? await rulesChannel.messages.fetch(indexState.indexMessageId).catch(() => null)
+    : null;
+  let indexAction;
+  if (!indexMessage) {
+    indexMessage = await rulesChannel.send("**Definitions Index**\n\n_(generating…)_");
+    await indexMessage.pin().catch((e) => console.log(`Failed to pin rules index message: ${String(e?.message || e)}`));
+    indexAction = "created and pinned";
+  } else {
+    indexAction = "updated";
+  }
+
+  // 2. Create/update each definition message.
+  const newDefinitions = {};
   for (const { channel, term } of defChannels) {
     const existingId = indexState.definitions?.[term]?.messageId;
     const existingMsg = existingId ? await rulesChannel.messages.fetch(existingId).catch(() => null) : null;
-
-    if (dryrun) {
-      planLines.push(`${existingMsg ? "update" : "create"}: ${term}`);
-      newDefinitions[term] = { messageId: existingMsg?.id ?? null };
-      if (existingMsg) updated++; else created++;
-      continue;
-    }
 
     const messages = [...(await channel.messages.fetch({ limit: 100 })).values()]
       .sort((a, b) => a.createdTimestamp - b.createdTimestamp);
@@ -638,6 +652,8 @@ async function publishRulesIndex(guild, eventKey, dryrun) {
     }
   }
 
+  // 3. Now that every definition message exists, edit the (already-first)
+  //    index message with the real links.
   const indexLines = defChannels.map(({ term }) => {
     const messageId = newDefinitions[term]?.messageId;
     const label = titleCaseTerm(term);
@@ -646,25 +662,7 @@ async function publishRulesIndex(guild, eventKey, dryrun) {
       : `- ${label} (pending)`;
   });
   const indexBody = ["**Definitions Index**", "", ...indexLines].join("\n");
-
-  if (dryrun) {
-    planLines.push(indexState.indexMessageId ? "update: index message" : "create + pin: index message");
-    return { dryrun: true, planLines, created, updated, total: defChannels.length };
-  }
-
-  let indexMessage = indexState.indexMessageId
-    ? await rulesChannel.messages.fetch(indexState.indexMessageId).catch(() => null)
-    : null;
-  let indexAction;
-
-  if (indexMessage) {
-    await indexMessage.edit(indexBody);
-    indexAction = "updated";
-  } else {
-    indexMessage = await rulesChannel.send(indexBody);
-    await indexMessage.pin().catch((e) => console.log(`Failed to pin rules index message: ${String(e?.message || e)}`));
-    indexAction = "created and pinned";
-  }
+  await indexMessage.edit(indexBody);
 
   await db.saveRulesIndexState(
     eventKey,
@@ -672,7 +670,7 @@ async function publishRulesIndex(guild, eventKey, dryrun) {
     DB_IS_TEST
   );
 
-  return { dryrun: false, created, updated, total: defChannels.length, indexAction };
+  return { skipped: false, dryrun: false, created, updated, total: defChannels.length, indexAction };
 }
 
 // ---------------------------
@@ -1284,11 +1282,23 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (!dryrun) await db.saveCategoryState(eventKey, state, DB_IS_TEST);
+
+      const rulesIndex = await publishRulesIndex(guild, eventKey, state.standingChannels?.rules?.id, dryrun);
+      if (!rulesIndex.skipped && dryrun) {
+        planLines.push("Rules index:", ...rulesIndex.planLines.map((l) => `  - ${l}`));
+      }
+
       if (dryrun)
         return interaction.editReply(`Dry-run ✅\n\nPlan:\n${planLines.map((l) => `• ${l}`).join("\n")}`);
+
+      const rulesIndexNote = rulesIndex.skipped
+        ? `Rules index: skipped (${rulesIndex.reason}).`
+        : `Rules index: ${rulesIndex.total} definition(s) — created ${rulesIndex.created}, updated ${rulesIndex.updated} (index ${rulesIndex.indexAction}).`;
+
       return interaction.editReply(
         `Done ✅\nCategory "${categoryName}" ready. Max team size: ${state.maxTeamSize}.\n` +
-        `Standing channels — created: ${createdStanding}, reused: ${reusedStanding}`
+        `Standing channels — created: ${createdStanding}, reused: ${reusedStanding}\n` +
+        rulesIndexNote
       );
     }
 
@@ -1464,23 +1474,6 @@ client.on("interactionCreate", async (interaction) => {
       );
     }
 
-    // ---- /setup rules_index ----
-    if (interaction.commandName === "setup" && interaction.options.getSubcommand() === "rules_index") {
-      const eventKey = interaction.options.getString("event");
-      const dryrun   = interaction.options.getBoolean("dryrun") ?? false;
-
-      const result = await publishRulesIndex(guild, eventKey, dryrun);
-
-      if (dryrun) {
-        return interaction.editReply(
-          `Dry-run ✅\n\nPlan:\n${result.planLines.map((l) => `• ${l}`).join("\n")}`
-        );
-      }
-      return interaction.editReply(
-        `Done ✅\n${result.total} definition(s) — created: ${result.created}, updated: ${result.updated}\n` +
-        `Index message ${result.indexAction} in #rules.`
-      );
-    }
 
     // ---- /teardown ----
     // ---- /teardown event ----
