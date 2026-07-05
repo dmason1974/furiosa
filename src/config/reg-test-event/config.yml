@@ -1,0 +1,11 @@
+version: 5
+
+event:
+  key: "reg-test-event"
+  name: "Registrations Test Event"
+  round: 1
+  teamSize: 2
+
+maps:
+  - mapNumber: 1
+    teams: "registrations"
