@@ -134,6 +134,20 @@ src/config/
   - **Next planned work (not started)**: an "image import" feature — the
     original `#map-zones` channel also had a map graphic image attachment
     (`Country_Groups_3.png`) that isn't reproduced anywhere yet.
+- **Registrations-driven team threads (2026-07-05)**: a map entry's `zones`/
+  `theatres` array can instead be `teams: "registrations"` — `/setup maps`
+  then creates one private thread per **approved** `registrations` team
+  (grouped live from `db.getRegistrationEntries`, not hand-authored), for
+  events with no zone/theatre division at all. Reuses the same
+  create-or-reuse-thread logic as the other two modes; `thread.md` gets
+  `TEAM_NAME`/`PLAYERS_MENTIONS`/`TEAM_SIZE` but no zone/theatre placeholders
+  and no subs (`registrations` has no subs concept, unlike `config.yml`
+  zones/theatres teams). Deployed to `furiosa-test`, not yet live-tested
+  (needs a test event with approved registrations + a matching
+  `config.yml`). **Likely to be revised** — see "Config.yml minimization +
+  `/draw` command" under Future plan below; this mode's `config.yml` shape
+  (a `maps:` array where each entry repeats `teams: "registrations"`) will
+  probably collapse to just a map *count* once that's designed properly.
 - **Rules index (2026-07-05, part of `/setup event`, not a separate
   command)**: reads the server-wide `definitions` category (one channel per
   rules term, e.g. `☢️-act-of-war`), publishes each as its own message in
@@ -337,6 +351,40 @@ src/config/
   `/setup event` hasn't been run on prod for `blood-pact` or
   `balance-of-power` since this shipped — that's an intentional "publish
   when ready" step for the user, not an oversight.
+- **Config.yml minimization + `/draw` command — designed 2026-07-05, not
+  started, the main planned work for next session:**
+  - The team↔zone/theatre "draw" (currently hand-authored into a round's
+    `config.yml`) is done externally on **random.org**, not by the bot —
+    so the planned `/draw` command doesn't do any randomization itself, it
+    just **records** a result staff already produced. Likely input
+    mechanism: reuse the same "paste a sheet/CSV" pattern as
+    `/setup zones` (`sheetCsvExportUrl`/`parseCsvLine` in `src/index.js`
+    are already generic enough to reuse), since staff will have the draw
+    result recorded somewhere. Writes to a **new table** (not yet created)
+    — something like `event_zone_assignments` (event_key, round_key,
+    zone_number → team_name, or a theatre_id/team pairing for theatres
+    mode).
+  - Once that exists, `/setup maps` should read team assignments from it
+    instead of from `config.yml`'s `zone.team`/`theatre.teams` — at which
+    point `config.yml` needs **no team data at all** for zones/theatres
+    events, matching what already happened for zone country data (now
+    DB-backed via `event_zone_definitions`).
+  - For the **registrations-only mode** (this session's `teams:
+    "registrations"`, see Commands above), `config.yml` should shrink
+    further to just a map *count* — there's no per-map data left to
+    specify once teams come live from `registrations` and there's no
+    zone/theatre division. Revisit this session's implementation to match.
+  - `thread.md` shouldn't be per-event/round either — once the above
+    lands, the message body only depends on *mode* (theatres vs. zones vs.
+    registrations-only), not on which event it is. Plan: **3 shared
+    templates** (e.g. under a new `src/templates/` dir) selected by mode,
+    replacing the current per-event/round `thread.md` file convention
+    entirely.
+  - Net effect once all of this ships: `config.yml` per event/round
+    reduces to just `event.key`/`name`/`round`/`teamSize` and either a map
+    count (registrations-only) or map/zone-number structure with no team
+    data (zones/theatres) — everything else (country data, team↔zone
+    assignment, team rosters, message templates) is DB-backed or shared.
 - **`Restart=on-failure` vs `Restart=always`** in `deploy/furiosa.service`:
   current setting won't restart the service on a clean-exit crash (e.g. an
   unhandled rejection handler calling `process.exit(0)`). Flagged as a

@@ -132,9 +132,10 @@ function validateConfig(cfg) {
 
       const hasTheatres = Array.isArray(m.theatres);
       const hasZones    = Array.isArray(m.zones);
+      const usesRegistrationsTeams = m.teams === "registrations";
 
-      if (!hasTheatres && !hasZones) {
-        errs.push(`Map ${m.mapNumber}: must have either theatres or zones array`);
+      if (!hasTheatres && !hasZones && !usesRegistrationsTeams) {
+        errs.push(`Map ${m.mapNumber}: must have either theatres, zones, or teams: registrations`);
         continue;
       }
 
@@ -1596,6 +1597,18 @@ client.on("interactionCreate", async (interaction) => {
       let createdChannels = 0, createdThreads = 0, reusedChannels = 0, reusedThreads = 0;
       const zoneData = await db.getZoneDefinitions(eventKey, DB_IS_TEST);
 
+      // For maps with `teams: registrations` (below) — team rosters come
+      // live from approved /register entries instead of being hand-authored
+      // in config.yml. Approval is already the trust boundary (staff only
+      // approve teams via /registrations approve), so no further name
+      // vetting happens here before using it as a thread name.
+      const registrationEntries = await db.getRegistrationEntries(eventKey, DB_IS_TEST);
+      const approvedTeams = {};
+      for (const [playerId, entry] of Object.entries(registrationEntries)) {
+        if (entry.status !== "approved") continue;
+        (approvedTeams[entry.team] ||= []).push(playerId);
+      }
+
       for (const map of cfg.maps) {
         const channelName = `${channelPrefix}-map${pad2(map.mapNumber)}`;
         planLines.push(`Map ${map.mapNumber}: channel #${channelName}`);
@@ -1725,6 +1738,47 @@ client.on("interactionCreate", async (interaction) => {
               await thread.send(body);
               await addPlayersToThread(guild, thread, team.players);
               await addPlayersToThread(guild, thread, team.subs);
+              state.threads[`${channelName}:${threadName}`].posted = true;
+            }
+          }
+        }
+
+        if (map.teams === "registrations") {
+          for (const [teamName, playerIds] of Object.entries(approvedTeams)) {
+            const threadName = slugify(teamName);
+            planLines.push(`  - team "${teamName}": would ensure private thread "${threadName}"`);
+            if (!mapChannel) continue;
+
+            let threadId = state.threads?.[`${channelName}:${threadName}`]?.id;
+            let thread   = threadId ? await guild.channels.fetch(threadId).catch(() => null) : null;
+            if (!thread) thread = await findThreadByName(mapChannel, threadName);
+
+            if (!thread) {
+              if (!dryrun) {
+                thread = await mapChannel.threads.create({
+                  name: threadName, type: ChannelType.PrivateThread,
+                  autoArchiveDuration: 10080, reason: "Event setup",
+                });
+                createdThreads++;
+                state.threads[`${channelName}:${threadName}`] = { id: thread.id };
+              }
+            } else {
+              reusedThreads++;
+              state.threads[`${channelName}:${threadName}`] = { id: thread.id };
+            }
+
+            if (!dryrun && thread && state.threads[`${channelName}:${threadName}`]?.posted !== true) {
+              const body = renderTemplate(template, {
+                EVENT_NAME: cfg.event.name, EVENT_ROUND: String(cfg.event.round),
+                EVENT_KEY: cfg.event.key, MAP_NUMBER: String(map.mapNumber),
+                MAP_NUMBER_PAD2: pad2(map.mapNumber),
+                TEAM_NAME: teamName,
+                PLAYERS_MENTIONS: mentionList(playerIds),
+                SUBS_MENTIONS: "- None",
+                TEAM_SIZE: String(cfg.event.teamSize),
+              });
+              await thread.send(body);
+              await addPlayersToThread(guild, thread, playerIds);
               state.threads[`${channelName}:${threadName}`].posted = true;
             }
           }
