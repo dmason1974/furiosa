@@ -130,6 +130,24 @@ src/config/
 - **Channel topics don't auto-format slash-command mentions.** Bold them
   manually with `**/command**` if you want them visually distinct — nothing
   auto-bolds plain `/command` text in a topic string.
+- **Command visibility vs. authorization are two separate systems, and only
+  one is settable from the bot's own token.** Every command's actual gate is
+  the in-code `isStaff`/`isWarboy` check in `interactionCreate` — that's the
+  real authorization boundary and stays regardless of Discord-side settings.
+  On top of that (2026-07-05), all staff-only commands (everything except
+  `/register`/`/unregister`) now also set
+  `.setDefaultMemberPermissions(PermissionFlagsBits.Administrator)`, so
+  Discord itself hides them from non-admins in the UI — this works because
+  both the live and test servers' `EVENT_STAFF_ROLE_ID` roles happen to carry
+  `Administrator`. There's no clean equivalent for hiding `/register`/
+  `/unregister` from non-Warboys: Discord's `default_member_permissions` only
+  understands real permission bits, not arbitrary custom roles, and Warboy is
+  just a general-member role with no distinguishing permission to hang that
+  off of. The *other* Discord mechanism — per-guild "Integration Permissions"
+  role-specific overrides — can't be set by the bot's own token at all since a
+  2022 API change requires an OAuth2 Bearer token from a server admin; it'd
+  have to be configured by hand per-server in Discord's UI, not automated by
+  `/setup`.
 - An uncaught `DiscordAPIError[10008] Unknown Message` (editing an
   interaction reply that no longer exists) crashed the whole process once
   this session — Node 20 terminates on unhandled promise rejections, and

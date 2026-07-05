@@ -13,6 +13,7 @@ const {
   SlashCommandBuilder,
   ChannelType,
   PermissionsBitField,
+  PermissionFlagsBits,
   ButtonBuilder,
   ActionRowBuilder,
   ButtonStyle,
@@ -188,6 +189,7 @@ const client = new Client({
 const setupCommand = new SlashCommandBuilder()
   .setName("setup")
   .setDescription("Set up an event's Discord structure")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addSubcommand((s) =>
     s.setName("event").setDescription("Create the event's category and standing channels")
       .addStringOption((o) =>
@@ -212,6 +214,7 @@ const setupCommand = new SlashCommandBuilder()
 const teardownCommand = new SlashCommandBuilder()
   .setName("teardown")
   .setDescription("Remove things /setup created")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addSubcommand((s) =>
     s.setName("event").setDescription("Delete the event's category and standing channels")
       .addStringOption((o) =>
@@ -248,6 +251,7 @@ const unregisterCommand = new SlashCommandBuilder()
 const registrationsCommand = new SlashCommandBuilder()
   .setName("registrations")
   .setDescription("Review and manage player registrations")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addSubcommand((s) =>
     s.setName("list").setDescription("List registrations for an event")
       .addStringOption((o) =>
@@ -297,6 +301,7 @@ const registrationsCommand = new SlashCommandBuilder()
 const lobbyCommand = new SlashCommandBuilder()
   .setName("lobby")
   .setDescription("Manage the matchmaking lobby")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addSubcommand((s) =>
     s.setName("add").setDescription("Add a player to the lobby")
       .addUserOption((o) => o.setName("player").setDescription("Player to add").setRequired(true))
@@ -319,6 +324,7 @@ const lobbyCommand = new SlashCommandBuilder()
 const seasonCommand = new SlashCommandBuilder()
   .setName("season")
   .setDescription("Manage seasons")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addSubcommand((s) =>
     s.setName("create").setDescription("Create a new season")
       .addStringOption((o) => o.setName("name").setDescription("Season name e.g. S1").setRequired(true))
@@ -341,11 +347,13 @@ const seasonCommand = new SlashCommandBuilder()
 const syncMembersCommand = new SlashCommandBuilder()
   .setName("sync_members")
   .setDescription("Sync all non-bot guild members into the Elo players table")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
 const createMatchCommand = new SlashCommandBuilder()
   .setName("create_match")
   .setDescription("Create a pending match between two teams (up to 5v5; use /matchmake save:True for larger)")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addUserOption((o) => o.setName("team1_p1").setDescription("Team 1 — Player 1").setRequired(true))
   .addUserOption((o) => o.setName("team2_p1").setDescription("Team 2 — Player 1").setRequired(true))
   .addUserOption((o) => o.setName("team1_p2").setDescription("Team 1 — Player 2"))
@@ -361,6 +369,7 @@ const createMatchCommand = new SlashCommandBuilder()
 const recordResultCommand = new SlashCommandBuilder()
   .setName("record_result")
   .setDescription("Record the result of a pending match")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addStringOption((o) =>
     o.setName("match").setDescription("Select a pending match").setRequired(true).setAutocomplete(true)
   )
@@ -377,18 +386,21 @@ const recordResultCommand = new SlashCommandBuilder()
 const ratingsCommand = new SlashCommandBuilder()
   .setName("ratings")
   .setDescription("Show the current Elo leaderboard")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addBooleanOption((o) => o.setName("save").setDescription("Save the suggested matchup as a pending match"))
   .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
 const leagueCommand = new SlashCommandBuilder()
   .setName("league")
   .setDescription("Show the league table for a season")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addStringOption((o) => o.setName("season").setDescription("Season name (defaults to active season)"))
   .addBooleanOption((o) => o.setName("test").setDescription("Use test database"));
 
 const matchmakeCommand = new SlashCommandBuilder()
   .setName("matchmake")
   .setDescription("Matchmaking operations")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addSubcommand((s) =>
     s.setName("create").setDescription("Split lobby players into balanced teams and create pending matches")
       .addIntegerOption((o) =>
