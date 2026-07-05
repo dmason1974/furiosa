@@ -40,10 +40,13 @@ src/config/
   field, no fallback. Don't reintroduce one without a good reason.
 - Multi-round events nest each round in its own subdirectory; single-round
   events keep `config.yml`/`thread.md` directly in the event directory.
-- The category + 4 standing channels (`event-chat`, `rules`,
-  `registered-teams`, `registration`) belong to the **event** and are shared
-  across all its rounds. Map channels/threads belong to a **round** (or to
-  the event directly, if it has no rounds).
+- The category + 5 standing channels (`event-chat`, `rules`,
+  `registered-teams`, `registration`, `applications`) belong to the **event**
+  and are shared across all its rounds. Map channels/threads belong to a
+  **round** (or to the event directly, if it has no rounds). `applications`
+  is staff-only (hidden from `@everyone`, visible to `EVENT_STAFF_ROLE_ID`
+  and the bot) — it's where Approve/Reject team-ready notifications post;
+  see the `/register` entry below.
 
 ### Config vs. runtime state — kept deliberately separate
 
@@ -85,8 +88,8 @@ src/config/
   event is inferred from the channel's parent category name
   (`eventKeyForCategory`), not typed. Enforces `maxTeamSize` (set via
   `/setup event`'s `max_team_size` option, default 5); posts an Approve/Reject
-  button notification to `EVENT_APPLICATIONS_CHANNEL_ID` when a team first
-  reaches capacity.
+  button notification to that event's own `#applications` standing channel
+  when a team first reaches capacity.
 - `/unregister` — withdraws the caller's own registration for the event
   inferred from the channel it's run in (same Warboy gating and channel
   inference as `/register`). Refreshes `#registered-teams` if they'd already
@@ -150,12 +153,14 @@ src/config/
   with `/setup event`.
 - **`CHANNEL_PREFIX`/`THREAD_PREFIX` are gone** — confirmed dead (never
   referenced in code) and removed from `.env.example`.
-- **Two new required env vars for the registration feature**:
-  `WARBOY_ROLE_ID` (the general member role allowed to use `/register`/
-  `/unregister`) and `EVENT_APPLICATIONS_CHANNEL_ID` (where team-ready
-  Approve/Reject notifications post). Both are set in `.env` on the current
-  Fury Road server/box — will need real values again for any other server
-  (see Future plan: test server below).
+- **One new required env var for the registration feature**: `WARBOY_ROLE_ID`
+  (the general member role allowed to use `/register`/`/unregister`). Set in
+  `.env` on the current Fury Road server/box — will need a real value again
+  for any other server (see Future plan: test server below).
+  `EVENT_APPLICATIONS_CHANNEL_ID` used to be a second bot-level env var here
+  but was removed: where team-ready Approve/Reject notifications post is now
+  the per-event `#applications` standing channel (created by `/setup event`,
+  same as `#registration` etc.), not a single bot-wide channel.
 - No automated Lightsail snapshots — deliberate cost decision for a hobby
   project. Rebuilding from git + a fresh instance is the accepted recovery
   path, not snapshot restore.
@@ -167,14 +172,19 @@ src/config/
 
 ## Future plan / open items
 
-- **Next session: deploy to a test Discord server.** The registration
+- **Test Discord server deploy — in progress (2026-07-05).** The registration
   feature (`/register`, `/unregister`, `/registrations`, Approve/Reject
-  buttons) has only been exercised on the live Fury Road server so far. Plan
-  is to stand up a separate test server before going further, so iteration
-  doesn't risk the real one. This will need its own `GUILD_ID`,
-  `EVENT_STAFF_ROLE_ID`, `WARBOY_ROLE_ID`, and `EVENT_APPLICATIONS_CHANNEL_ID`
-  — either a second `.env`/instance, or a documented way to swap servers on
-  the existing box. Not started/designed yet.
+  buttons) had only been exercised on the live Fury Road server before this.
+  Decided: a second, fully independent systemd instance on the same
+  Lightsail box (not an env-swap on one instance) — see `deploy/README.md`'s
+  "Running a second (test) instance" section for the `bootstrap.sh`
+  `APP_DIR`/`SERVICE_NAME` override mechanism. `/opt/furiosa-test` is
+  installed and running as `furiosa-test.service`; its `.env` has the test
+  server's `GUILD_ID`, `EVENT_STAFF_ROLE_ID`, `WARBOY_ROLE_ID`, and
+  `DISCORD_TOKEN` filled in. Not yet exercised end-to-end: run `/setup event`
+  against the test server to confirm it creates the category + all 5
+  standing channels (including the new `applications` one) and then walk
+  through `/register`/`/registrations`/`/unregister` there.
 - **Matchmake/ELO rearchitecture**: give `/lobby`/`/matchmake`/`/create_match`
   their own way to resolve a category (mirroring `/setup event`'s model)
   instead of the removed `EVENT_CATEGORY_ID`. Not started.

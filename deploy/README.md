@@ -120,13 +120,14 @@ env var overrides make this the same script, not a fork of it.
    `/opt/furiosa-test/.env` from `.env.example` (a placeholder, since the dir
    is new), and installs+enables+starts a unit named `furiosa-test.service`.
 3. Fill in `/opt/furiosa-test/.env` with the **test server's** own
-   `DISCORD_TOKEN`, `GUILD_ID`, `EVENT_STAFF_ROLE_ID`, `WARBOY_ROLE_ID`,
-   `EVENT_APPLICATIONS_CHANNEL_ID` — a separate bot application registered
-   against the test Discord server (own token, Server Members Intent
-   enabled, invited to that server). `PGHOST`/`PGDATABASE_*`/`PGUSER`/
-   `PGPASSWORD` can simply mirror prod's `.env` values; the DB isn't
-   exercised by registration/setup/teardown, and matchmaking commands (which
-   do touch it) already fail non-fatally.
+   `DISCORD_TOKEN`, `GUILD_ID`, `EVENT_STAFF_ROLE_ID`, `WARBOY_ROLE_ID` — a
+   separate bot application registered against the test Discord server (own
+   token, Server Members Intent enabled, invited to that server).
+   `PGHOST`/`PGDATABASE_*`/`PGUSER`/`PGPASSWORD` can simply mirror prod's
+   `.env` values; the DB isn't exercised by registration/setup/teardown, and
+   matchmaking commands (which do touch it) already fail non-fatally. (The
+   applications channel is no longer an env var — `/setup event` creates a
+   per-event `#applications` standing channel automatically.)
 4. `sudo chmod 600 /opt/furiosa-test/.env` then `sudo systemctl restart furiosa-test`.
 5. Verify: `sudo systemctl status furiosa-test`, `sudo journalctl -u
    furiosa-test -f` (confirm gateway login), then in the test Discord server

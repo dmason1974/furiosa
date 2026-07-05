@@ -24,7 +24,10 @@ const elo = require("./elo");
 // ---------------------------
 // Helpers
 // ---------------------------
-const STANDING_CHANNEL_NAMES = ["event-chat", "rules", "registered-teams", "registration"];
+const STANDING_CHANNEL_NAMES = ["event-chat", "rules", "registered-teams", "registration", "applications"];
+// Staff-only standing channels: hidden from @everyone, visible only to
+// EVENT_STAFF_ROLE_ID (plus the bot itself, so it can post there).
+const STANDING_CHANNEL_STAFF_ONLY = new Set(["applications"]);
 // Standing channels where @everyone may send messages; all others are view-only
 // (e.g. "registration" is posted to only via its apply panel component, not free text).
 const STANDING_CHANNEL_OPEN_POST = new Set(["event-chat"]);
@@ -513,13 +516,32 @@ function categoryOverwrites(guild) {
 }
 
 function standingChannelOverwrites(guild, channelName) {
+  const staffOnly = STANDING_CHANNEL_STAFF_ONLY.has(channelName);
   const overwrites = [
     {
       id: guild.roles.everyone.id,
-      allow: [PermissionsBitField.Flags.ViewChannel],
-      deny: STANDING_CHANNEL_OPEN_POST.has(channelName) ? [] : [PermissionsBitField.Flags.SendMessages],
+      allow: staffOnly ? [] : [PermissionsBitField.Flags.ViewChannel],
+      deny: staffOnly
+        ? [PermissionsBitField.Flags.ViewChannel]
+        : STANDING_CHANNEL_OPEN_POST.has(channelName) ? [] : [PermissionsBitField.Flags.SendMessages],
     },
   ];
+
+  if (staffOnly) {
+    // @everyone is denied ViewChannel above, so both staff and the bot need
+    // explicit allows here to see/post in this channel at all.
+    overwrites.push({
+      id: guild.client.user.id,
+      allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+    });
+    const staffRoleId = process.env.EVENT_STAFF_ROLE_ID;
+    if (staffRoleId) {
+      overwrites.push({
+        id: staffRoleId,
+        allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages],
+      });
+    }
+  }
 
   // Tested in practice: Use Application Commands alone was NOT sufficient to
   // let Warboys run /register here -- Send Messages is required too, despite
@@ -657,7 +679,8 @@ async function rejectTeam(guild, eventKey, team, reviewerId) {
 }
 
 async function postTeamReadyNotification(guild, eventKey, team) {
-  const channelId = process.env.EVENT_APPLICATIONS_CHANNEL_ID;
+  const catState = loadJson(categoryStatePath(eventKey), { categoryId: null, standingChannels: {} });
+  const channelId = catState.standingChannels?.applications?.id;
   if (!channelId) return;
   const channel = await guild.channels.fetch(channelId).catch(() => null);
   if (!channel) return;
