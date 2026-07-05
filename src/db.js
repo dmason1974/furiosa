@@ -159,6 +159,28 @@ async function initSchema(isTest = false) {
       definitions      JSONB       NOT NULL DEFAULT '{}',
       updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS event_zone_definitions (
+      event_key        TEXT        PRIMARY KEY,
+      zones            JSONB       NOT NULL DEFAULT '{}',
+      admin_countries  JSONB       NOT NULL DEFAULT '[]',
+      source_sheet_url TEXT,
+      updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS event_zones_index (
+      event_key         TEXT        PRIMARY KEY,
+      header_message_id TEXT,
+      zone_messages     JSONB       NOT NULL DEFAULT '{}',
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // Safe upgrades for existing deployments
+  await pool.query(`
+    ALTER TABLE event_zones_index DROP COLUMN IF EXISTS index_message_id;
+    ALTER TABLE event_zones_index DROP COLUMN IF EXISTS index_message_ids;
+    ALTER TABLE event_zones_index ADD COLUMN IF NOT EXISTS header_message_id TEXT;
   `);
 }
 
@@ -664,6 +686,52 @@ async function saveRulesIndexState(eventKey, state, isTest = false) {
   );
 }
 
+// ---------------------------
+// Zone definitions (imported from a staff Google Sheet)
+// ---------------------------
+async function getZoneDefinitions(eventKey, isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT zones, admin_countries, source_sheet_url FROM event_zone_definitions WHERE event_key = $1`,
+    [eventKey]
+  );
+  if (!rows[0]) return null;
+  return {
+    zones: rows[0].zones,
+    adminCountries: rows[0].admin_countries,
+    sourceSheetUrl: rows[0].source_sheet_url,
+  };
+}
+
+async function saveZoneDefinitions(eventKey, data, isTest = false) {
+  await getPool(isTest).query(
+    `INSERT INTO event_zone_definitions (event_key, zones, admin_countries, source_sheet_url, updated_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (event_key) DO UPDATE
+       SET zones = EXCLUDED.zones, admin_countries = EXCLUDED.admin_countries,
+           source_sheet_url = EXCLUDED.source_sheet_url, updated_at = NOW()`,
+    [eventKey, JSON.stringify(data.zones || {}), JSON.stringify(data.adminCountries || []), data.sourceSheetUrl ?? null]
+  );
+}
+
+async function loadZonesIndexState(eventKey, isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT header_message_id, zone_messages FROM event_zones_index WHERE event_key = $1`,
+    [eventKey]
+  );
+  if (!rows[0]) return { headerMessageId: null, zoneMessages: {} };
+  return { headerMessageId: rows[0].header_message_id, zoneMessages: rows[0].zone_messages };
+}
+
+async function saveZonesIndexState(eventKey, state, isTest = false) {
+  await getPool(isTest).query(
+    `INSERT INTO event_zones_index (event_key, header_message_id, zone_messages, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (event_key) DO UPDATE
+       SET header_message_id = EXCLUDED.header_message_id, zone_messages = EXCLUDED.zone_messages, updated_at = NOW()`,
+    [eventKey, state.headerMessageId ?? null, JSON.stringify(state.zoneMessages || {})]
+  );
+}
+
 module.exports = {
   getPool, initSchema,
   upsertPlayer, getPlayers, getRatings,
@@ -677,4 +745,5 @@ module.exports = {
   loadCategoryState, saveCategoryState, deleteCategoryState, getEventKeyForCategory,
   loadRoundState, saveRoundState, deleteRoundState, findLingeringRoundStates,
   loadRulesIndexState, saveRulesIndexState,
+  getZoneDefinitions, saveZoneDefinitions, loadZonesIndexState, saveZonesIndexState,
 };

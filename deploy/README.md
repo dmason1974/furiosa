@@ -165,3 +165,10 @@ defaults as before this feature existed.
 - **`Restart=on-failure`** won't restart the service on a clean exit (e.g. an
   unhandled rejection handler that calls `process.exit(0)`). Switch to
   `Restart=always` in `furiosa.service.tmpl` if that turns out to matter.
+- **`/setup zones import` requires the Google Sheet to be shared "Anyone
+  with the link can view."** The bot fetches the sheet's CSV export over a
+  plain unauthenticated HTTP request — no service account or OAuth is set
+  up — so a sheet left at the default "Restricted" access returns HTTP 401
+  and the import fails with a clear error, but it's an easy step to forget
+  when a new event's sheet is created from a copy of a previous one (sharing
+  settings aren't copied).

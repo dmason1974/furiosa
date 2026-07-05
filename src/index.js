@@ -25,7 +25,11 @@ const elo = require("./elo");
 // ---------------------------
 // Helpers
 // ---------------------------
-const STANDING_CHANNEL_NAMES = ["event-chat", "rules", "registered-teams", "registration", "applications"];
+// Alphabetical order — both so the category displays them that way (see the
+// setPositions call after standing channels are created/found in /setup
+// event) and because "registered-teams" alphabetizes before "registration",
+// which registration's topic template (below) already depends on.
+const STANDING_CHANNEL_NAMES = ["applications", "event-chat", "registered-teams", "registration", "rules", "zones"];
 // Staff-only standing channels: hidden from @everyone, visible only to
 // EVENT_STAFF_ROLE_ID (plus the bot itself, so it can post there).
 const STANDING_CHANNEL_STAFF_ONLY = new Set(["applications"]);
@@ -161,8 +165,10 @@ function validateConfig(cfg) {
       if (hasZones) {
         for (const z of m.zones) {
           if (!Number.isInteger(z.zoneNumber)) errs.push(`Map ${m.mapNumber}: zone missing zoneNumber (integer)`);
-          if (!Array.isArray(z.homeland))      errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: missing homeland array`);
-          if (!Array.isArray(z.ai))            errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: missing ai array`);
+          // homeland/ai are optional here: if omitted, /setup maps falls back to
+          // that zone's imported data (see /setup zones import, event_zone_definitions).
+          if (z.homeland != null && !Array.isArray(z.homeland)) errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: homeland must be an array when provided`);
+          if (z.ai != null && !Array.isArray(z.ai))             errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: ai must be an array when provided`);
           if (!z.team || typeof z.team !== "object") {
             errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: missing team object`);
           } else {
@@ -212,6 +218,16 @@ const setupCommand = new SlashCommandBuilder()
       )
       .addStringOption((o) =>
         o.setName("round").setDescription("Round subdirectory name (omit if the event has no rounds)")
+      )
+      .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without creating anything"))
+  )
+  .addSubcommand((s) =>
+    s.setName("zones").setDescription("Import zone Homeland/AI country lists from a Google Sheet and publish #zones")
+      .addStringOption((o) =>
+        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+      )
+      .addStringOption((o) =>
+        o.setName("sheet_url").setDescription("Google Sheet URL (must be shared \"Anyone with the link can view\")").setRequired(true)
       )
       .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without creating anything"))
   );
@@ -689,6 +705,208 @@ async function publishRulesIndex(guild, eventKey, rulesChannelId, dryrun) {
   );
 
   return { skipped: false, dryrun: false, created, updated, total: defChannels.length, indexAction };
+}
+
+// ---------------------------
+// Zones index (event_zone_definitions -> #zones)
+// ---------------------------
+function countryBlock(fence, countries) {
+  const body = (countries || []).map((c) => ` ${c}`).join("\n") || " (none)";
+  return `\`\`\`${fence}\n${body}\n\`\`\``;
+}
+
+// Matches the wording/formatting of the original hand-written #map-zones
+// reference channel's legend message (see map-zones-dump.txt from this
+// session) — dynamic only in the admin countries list, which comes from
+// whatever was imported for this event rather than being hardcoded.
+function zonesHeaderBody(adminCountries) {
+  const adminLines = (adminCountries || []).map((c) => `- ${c}`).join("\n") || "- (none)";
+  return [
+    "# 🌐 Map Division",
+    "```fix",
+    "Blue denotes Homeland playable",
+    "```",
+    "```yaml",
+    "Green denotes conquerable AI",
+    "```",
+    "The following countries are Admin countries",
+    "```diff",
+    adminLines,
+    "```",
+    "",
+    "Countries that are not denoted as homeland or conquerable AI are not to be captured during truce.",
+  ].join("\n");
+}
+
+// Called from /setup zones import and from the /setup event handler (same
+// place publishRulesIndex is called) so re-running /setup event also
+// refreshes #zones if zone data already exists. Never throws: no zone data
+// imported yet is a graceful skip, same idiom as publishRulesIndex's
+// missing-"definitions"-category skip. One message per zone (Homeland
+// first, then AI, matching the reference channel), preceded by a pinned
+// legend/admin-countries header — no links index.
+async function publishZonesIndex(guild, eventKey, zonesChannelId, dryrun) {
+  const zoneData = await db.getZoneDefinitions(eventKey, DB_IS_TEST);
+  if (!zoneData || !zoneData.zones || Object.keys(zoneData.zones).length === 0) {
+    return { skipped: true, reason: "no zone data imported yet — run /setup zones import" };
+  }
+
+  if (!zonesChannelId) return { skipped: true, reason: "#zones channel doesn't exist yet" };
+  const zonesChannel = await guild.channels.fetch(zonesChannelId).catch(() => null);
+  if (!zonesChannel) return { skipped: true, reason: "#zones channel could not be fetched" };
+
+  const zoneNumbers = Object.keys(zoneData.zones).sort((a, b) => Number(a) - Number(b));
+  const indexState = await db.loadZonesIndexState(eventKey, DB_IS_TEST);
+  let created = 0, updated = 0;
+
+  if (dryrun) {
+    const planLines = zoneNumbers.map((n) => {
+      const existingId = indexState.zoneMessages?.[n]?.messageId;
+      if (existingId) updated++; else created++;
+      return `${existingId ? "update" : "create"}: Zone ${n}`;
+    });
+    const staleZones = Object.keys(indexState.zoneMessages || {}).filter((n) => !zoneNumbers.includes(n));
+    for (const n of staleZones) planLines.push(`remove: Zone ${n} (no longer in latest import)`);
+    planLines.unshift(indexState.headerMessageId ? "update: header message" : "create + pin: header message (posted first)");
+    return { skipped: false, dryrun: true, planLines, created, updated, total: zoneNumbers.length };
+  }
+
+  // 1. Header message first (placeholder if new), same reasoning as rules
+  //    index: stays the chronologically-earliest message in the channel.
+  let headerMessage = indexState.headerMessageId
+    ? await zonesChannel.messages.fetch(indexState.headerMessageId).catch(() => null)
+    : null;
+  const headerBody = zonesHeaderBody(zoneData.adminCountries);
+  let headerAction;
+  if (!headerMessage) {
+    headerMessage = await zonesChannel.send(headerBody);
+    await headerMessage.pin().catch((e) => console.log(`Failed to pin zones header message: ${String(e?.message || e)}`));
+    headerAction = "created and pinned";
+  } else {
+    await headerMessage.edit(headerBody);
+    headerAction = "updated";
+  }
+  await db.saveZonesIndexState(eventKey, { headerMessageId: headerMessage.id, zoneMessages: indexState.zoneMessages }, DB_IS_TEST);
+
+  // 2. Create/update each zone's message.
+  const newZoneMessages = {};
+  for (const n of zoneNumbers) {
+    const zone = zoneData.zones[n];
+    const existingId = indexState.zoneMessages?.[n]?.messageId;
+    const existingMsg = existingId ? await zonesChannel.messages.fetch(existingId).catch(() => null) : null;
+
+    const body = [
+      `## Zone ${n}`,
+      "### Homeland",
+      countryBlock("fix", zone.homeland),
+      "### AI",
+      countryBlock("yaml", zone.ai),
+    ].join("\n");
+
+    if (existingMsg) {
+      await existingMsg.edit(body);
+      newZoneMessages[n] = { messageId: existingMsg.id };
+      updated++;
+    } else {
+      const sent = await zonesChannel.send(body);
+      newZoneMessages[n] = { messageId: sent.id };
+      created++;
+    }
+
+    // Saved per-zone (not just once at the end) so a later failure doesn't
+    // cause a retry to re-create zones already successfully posted.
+    await db.saveZonesIndexState(eventKey, { headerMessageId: headerMessage.id, zoneMessages: newZoneMessages }, DB_IS_TEST);
+  }
+
+  // 3. Stale zones: present in the previous import's tracked messages but
+  //    absent from this one. Edit in place (don't delete — avoids a broken
+  //    link for anything that already references the message) and drop
+  //    from tracked state.
+  const staleZones = Object.keys(indexState.zoneMessages || {}).filter((n) => !zoneNumbers.includes(n));
+  for (const n of staleZones) {
+    const staleId = indexState.zoneMessages[n]?.messageId;
+    const staleMsg = staleId ? await zonesChannel.messages.fetch(staleId).catch(() => null) : null;
+    if (staleMsg) await staleMsg.edit(`_(Zone ${n} removed in latest import)_`).catch(() => null);
+  }
+
+  return { skipped: false, dryrun: false, created, updated, total: zoneNumbers.length, indexAction: headerAction };
+}
+
+// Builds a Google Sheets CSV-export URL from any share-link form of the
+// same doc (edit link, view link, with or without a gid for a specific tab).
+function sheetCsvExportUrl(sheetUrl) {
+  const idMatch = sheetUrl.match(/\/spreadsheets\/d\/([\w-]+)/);
+  if (!idMatch) throw new Error("Couldn't find a spreadsheet ID in that URL.");
+  const gidMatch = sheetUrl.match(/[#&?]gid=(\d+)/);
+  const gid = gidMatch ? gidMatch[1] : "0";
+  return `https://docs.google.com/spreadsheets/d/${idMatch[1]}/export?format=csv&gid=${gid}`;
+}
+
+// Minimal CSV line parser handling double-quoted fields (incl. "" escapes),
+// sufficient for a Google Sheets CSV export — no external dependency needed
+// for the 3 columns (Country/Type/Zone) this feature actually reads.
+function parseCsvLine(line) {
+  const fields = [];
+  let cur = "", inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQuotes) {
+      if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (c === '"') inQuotes = false;
+      else cur += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ",") { fields.push(cur); cur = ""; }
+    else cur += c;
+  }
+  fields.push(cur);
+  return fields;
+}
+
+// Parses the zone sheet's CSV into { zones: {n: {homeland, ai}}, adminCountries, warnings }.
+// Rows with a blank Zone (the unassigned country pool) are skipped entirely.
+function parseZonesCsv(csvText) {
+  const lines = csvText.split(/\r?\n/).filter((l) => l.length > 0);
+  if (lines.length === 0) throw new Error("Sheet CSV export was empty.");
+
+  const header = parseCsvLine(lines[0]).map((h) => h.trim().toLowerCase());
+  const countryIdx = header.indexOf("country");
+  const typeIdx    = header.indexOf("type");
+  const zoneIdx    = header.indexOf("zone");
+  if (countryIdx === -1 || typeIdx === -1 || zoneIdx === -1) {
+    throw new Error(`Sheet must have "Country", "Type", and "Zone" columns (found: ${header.join(", ")}).`);
+  }
+
+  const zones = {};
+  const adminCountries = [];
+  const warnings = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseCsvLine(lines[i]);
+    const country = (row[countryIdx] || "").trim();
+    const type    = (row[typeIdx] || "").trim().toLowerCase();
+    const zoneRaw = (row[zoneIdx] || "").trim().toLowerCase();
+    if (!country || !zoneRaw) continue; // unassigned country pool
+
+    if (zoneRaw === "admin") {
+      adminCountries.push(country);
+      continue;
+    }
+
+    const zoneNumber = Number(zoneRaw);
+    if (!Number.isInteger(zoneNumber)) {
+      warnings.push(`Row ${i + 1}: unrecognized Zone value "${row[zoneIdx]}" for ${country} — skipped.`);
+      continue;
+    }
+
+    const key = String(zoneNumber);
+    if (!zones[key]) zones[key] = { homeland: [], ai: [] };
+
+    if (type === "homeland") zones[key].homeland.push(country);
+    else if (type === "ai") zones[key].ai.push(country);
+    else warnings.push(`Row ${i + 1}: unrecognized Type "${row[typeIdx]}" for ${country} (Zone ${zoneNumber}) — skipped.`);
+  }
+
+  return { zones, adminCountries, warnings };
 }
 
 // ---------------------------
@@ -1306,11 +1524,27 @@ client.on("interactionCreate", async (interaction) => {
         }
       }
 
+      // Enforce alphabetical order within the category — STANDING_CHANNEL_NAMES
+      // is declared alphabetically, but that only controls creation order for
+      // brand-new channels; re-running against a category whose channels
+      // already exist in some other order (or were created before this was
+      // added) needs an explicit reorder every time to stay correct.
+      if (!dryrun && categoryId) {
+        await guild.channels.setPositions(
+          STANDING_CHANNEL_NAMES.map((name, i) => ({ channel: state.standingChannels[name].id, position: i }))
+        );
+      }
+
       if (!dryrun) await db.saveCategoryState(eventKey, state, DB_IS_TEST);
 
       const rulesIndex = await publishRulesIndex(guild, eventKey, state.standingChannels?.rules?.id, dryrun);
       if (!rulesIndex.skipped && dryrun) {
         planLines.push("Rules index:", ...rulesIndex.planLines.map((l) => `  - ${l}`));
+      }
+
+      const zonesIndex = await publishZonesIndex(guild, eventKey, state.standingChannels?.zones?.id, dryrun);
+      if (!zonesIndex.skipped && dryrun) {
+        planLines.push("Zones index:", ...zonesIndex.planLines.map((l) => `  - ${l}`));
       }
 
       if (dryrun)
@@ -1320,10 +1554,14 @@ client.on("interactionCreate", async (interaction) => {
         ? `Rules index: skipped (${rulesIndex.reason}).`
         : `Rules index: ${rulesIndex.total} definition(s) — created ${rulesIndex.created}, updated ${rulesIndex.updated} (index ${rulesIndex.indexAction}).`;
 
+      const zonesIndexNote = zonesIndex.skipped
+        ? `Zones index: skipped (${zonesIndex.reason}).`
+        : `Zones index: ${zonesIndex.total} zone(s) — created ${zonesIndex.created}, updated ${zonesIndex.updated} (index ${zonesIndex.indexAction}).`;
+
       return interaction.editReply(
         `Done ✅\nCategory "${categoryName}" ready. Max team size: ${state.maxTeamSize}.\n` +
         `Standing channels — created: ${createdStanding}, reused: ${reusedStanding}\n` +
-        rulesIndexNote
+        `${rulesIndexNote}\n${zonesIndexNote}`
       );
     }
 
@@ -1356,6 +1594,7 @@ client.on("interactionCreate", async (interaction) => {
       const channelPrefix = round ? `${eventKey}-${round}` : eventKey;
       const planLines = [];
       let createdChannels = 0, createdThreads = 0, reusedChannels = 0, reusedThreads = 0;
+      const zoneData = await db.getZoneDefinitions(eventKey, DB_IS_TEST);
 
       for (const map of cfg.maps) {
         const channelName = `${channelPrefix}-map${pad2(map.mapNumber)}`;
@@ -1434,6 +1673,17 @@ client.on("interactionCreate", async (interaction) => {
             const team = zone.team;
             if (!team) continue;
 
+            const dbZone = zoneData?.zones?.[String(zone.zoneNumber)];
+            const homeland = zone.homeland ?? dbZone?.homeland;
+            const ai       = zone.ai       ?? dbZone?.ai;
+            if (!homeland || !ai) {
+              planLines.push(
+                `  - zone ${zone.zoneNumber}: ERROR — no homeland/ai data in config.yml or imported zone data ` +
+                `(run /setup zones import for "${eventKey}" first)`
+              );
+              continue;
+            }
+
             const threadName = slugify(team.teamName);
             planLines.push(`  - zone ${zone.zoneNumber}: would ensure private thread "${threadName}"`);
             if (!mapChannel) continue;
@@ -1457,8 +1707,8 @@ client.on("interactionCreate", async (interaction) => {
             }
 
             if (!dryrun && thread && state.threads[`${channelName}:${threadName}`]?.posted !== true) {
-              const playable = (zone.homeland || []).map((c) => `- ${c}`).join("\n");
-              const ai       = (zone.ai || []).map((c) => `- ${c}`).join("\n");
+              const playableLines = (homeland || []).map((c) => `- ${c}`).join("\n");
+              const aiLines       = (ai || []).map((c) => `- ${c}`).join("\n");
               const body = renderTemplate(template, {
                 EVENT_NAME: cfg.event.name, EVENT_ROUND: String(cfg.event.round),
                 EVENT_KEY: cfg.event.key, MAP_NUMBER: String(map.mapNumber),
@@ -1466,8 +1716,8 @@ client.on("interactionCreate", async (interaction) => {
                 ZONE_NUMBER: String(zone.zoneNumber),
                 ZONE_NAME: zone.name || `Zone ${zone.zoneNumber}`,
                 TEAM_NAME: team.teamName,
-                PLAYABLE_COUNTRIES: playable || "- (none)",
-                AI_COUNTRIES: ai || "- (none)",
+                PLAYABLE_COUNTRIES: playableLines || "- (none)",
+                AI_COUNTRIES: aiLines || "- (none)",
                 PLAYERS_MENTIONS: mentionList(team.players),
                 SUBS_MENTIONS: mentionList(team.subs) || "- None",
                 TEAM_SIZE: String(cfg.event.teamSize),
@@ -1496,6 +1746,65 @@ client.on("interactionCreate", async (interaction) => {
       return interaction.editReply(
         `Done ✅\nCreated: ${createdChannels} channels, ${createdThreads} threads\n` +
         `Reused: ${reusedChannels} channels, ${reusedThreads} threads`
+      );
+    }
+
+    // ---- /setup zones ----
+    if (interaction.commandName === "setup" && interaction.options.getSubcommand() === "zones") {
+      const eventKey  = interaction.options.getString("event");
+      const sheetUrl  = interaction.options.getString("sheet_url");
+      const dryrun    = interaction.options.getBoolean("dryrun") ?? false;
+
+      const catState = await db.loadCategoryState(eventKey, DB_IS_TEST);
+      if (!catState.categoryId) {
+        return interaction.editReply(`Event "${eventKey}" has no category yet — run \`/setup event\` first.`);
+      }
+
+      let csvText;
+      try {
+        const csvUrl = sheetCsvExportUrl(sheetUrl);
+        const res = await fetch(csvUrl);
+        if (!res.ok) {
+          return interaction.editReply(
+            `Couldn't fetch that sheet (HTTP ${res.status}). Make sure it's shared "Anyone with the link can view".`
+          );
+        }
+        csvText = await res.text();
+      } catch (e) {
+        return interaction.editReply(`Failed to fetch sheet: ${String(e?.message || e)}`);
+      }
+
+      let parsed;
+      try {
+        parsed = parseZonesCsv(csvText);
+      } catch (e) {
+        return interaction.editReply(`Failed to parse sheet: ${String(e?.message || e)}`);
+      }
+
+      const zoneCount = Object.keys(parsed.zones).length;
+      const warningsNote = parsed.warnings.length ? `\nWarnings:\n${parsed.warnings.map((w) => `- ${w}`).join("\n")}` : "";
+
+      if (dryrun) {
+        return interaction.editReply(
+          `Dry-run ✅\n\nWould import ${zoneCount} zone(s) and ${parsed.adminCountries.length} admin ` +
+          `countr${parsed.adminCountries.length === 1 ? "y" : "ies"} for "${eventKey}".${warningsNote}`
+        );
+      }
+
+      await db.saveZoneDefinitions(
+        eventKey,
+        { zones: parsed.zones, adminCountries: parsed.adminCountries, sourceSheetUrl: sheetUrl },
+        DB_IS_TEST
+      );
+
+      const zonesIndex = await publishZonesIndex(guild, eventKey, catState.standingChannels?.zones?.id, false);
+      const zonesIndexNote = zonesIndex.skipped
+        ? `Zones index: skipped (${zonesIndex.reason}).`
+        : `Zones index: ${zonesIndex.total} zone(s) — created ${zonesIndex.created}, updated ${zonesIndex.updated} (index ${zonesIndex.indexAction}).`;
+
+      return interaction.editReply(
+        `Done ✅\nImported ${zoneCount} zone(s) and ${parsed.adminCountries.length} admin ` +
+        `countr${parsed.adminCountries.length === 1 ? "y" : "ies"} for "${eventKey}".\n${zonesIndexNote}${warningsNote}`
       );
     }
 
