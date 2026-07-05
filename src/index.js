@@ -32,13 +32,18 @@ const STANDING_CHANNEL_STAFF_ONLY = new Set(["applications"]);
 // Standing channels where @everyone may send messages; all others are view-only
 // (e.g. "registration" is posted to only via its apply panel component, not free text).
 const STANDING_CHANNEL_OPEN_POST = new Set(["event-chat"]);
+// registration's topic is a function, not a plain string, because it links
+// to that event's own #registered-teams channel — a different channel ID
+// per event, so it can't be a fixed string shared across every event/server.
 const STANDING_CHANNEL_TOPICS = {
-  registration:
+  registration: (guildId, registeredTeamsChannelId) =>
     ".\n\n" +
-    "**/register team:<name> ign:<name>**  — register your team (re-run to update; one entry per player)\n" +
-    "**/unregister**  — withdraw your registration\n" +
+    "***/register team:<name> ign:<name>*** — register yourself for your team (re-run to update; one entry per player)\n" +
+    "***/unregister*** — withdraw your registration\n" +
     "\n" +
-    "Staff must approve your team before it appears in #registered-teams",
+    `Staff must approve your team before it appears in [#registered-teams](https://discord.com/channels/${guildId}/${registeredTeamsChannelId})\n` +
+    "\n" +
+    "Note slowmode is enabled on this channel.",
 };
 // Slash commands aren't rate-limited by slowmode (only regular messages are),
 // so this discourages free-text chatter now that Warboys have Send Messages
@@ -1257,6 +1262,13 @@ client.on("interactionCreate", async (interaction) => {
         let channel   = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
         if (!channel && categoryId) channel = await findChannelByNameInCategory(guild, categoryId, channelName);
 
+        // "registered-teams" is created/resolved earlier in STANDING_CHANNEL_NAMES
+        // than "registration", so its ID is already known by the time we need it.
+        const topicTemplate = STANDING_CHANNEL_TOPICS[channelName];
+        const topic = typeof topicTemplate === "function"
+          ? topicTemplate(guild.id, state.standingChannels?.["registered-teams"]?.id)
+          : topicTemplate;
+
         if (!channel) {
           if (dryrun) {
             planLines.push(`  - would create channel #${channelName}`);
@@ -1264,7 +1276,7 @@ client.on("interactionCreate", async (interaction) => {
             channel = await guild.channels.create({
               name: channelName, type: ChannelType.GuildText, parent: categoryId, reason: "Event creation",
               permissionOverwrites: standingChannelOverwrites(guild, channelName),
-              topic: STANDING_CHANNEL_TOPICS[channelName],
+              topic,
               rateLimitPerUser: STANDING_CHANNEL_SLOWMODE[channelName],
             });
             createdStanding++;
@@ -1282,8 +1294,8 @@ client.on("interactionCreate", async (interaction) => {
             standingChannelOverwrites(guild, channelName),
             "Event setup - enforce permissions"
           );
-          if (STANDING_CHANNEL_TOPICS[channelName] && channel.topic !== STANDING_CHANNEL_TOPICS[channelName]) {
-            await channel.edit({ topic: STANDING_CHANNEL_TOPICS[channelName] });
+          if (topic && channel.topic !== topic) {
+            await channel.edit({ topic });
           }
           if (
             STANDING_CHANNEL_SLOWMODE[channelName] != null &&
