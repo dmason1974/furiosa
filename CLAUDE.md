@@ -94,6 +94,29 @@ src/config/
   up from that event's imported zone data by `zoneNumber`; if neither source
   has them, that zone errors clearly instead of posting an empty "(none)"
   into the private team thread.
+  - **DB-driven zones mode, no `config.yml` (2026-07-09)**: if a round has
+    **no `config.yml` at all**, `/setup maps` no longer errors — it builds a
+    single map channel (`<event>[-<round>]-map01`) with one private thread
+    per zone already imported via `/setup zones` (`event_zone_definitions`),
+    using that zone's `/draw` assignment (`event_zone_assignments`) for the
+    team and that team's *approved* `/registrations` for the roster. Only
+    `thread.md` needs to exist as a file — `EVENT_NAME`/`EVENT_KEY` render
+    as the event key itself, `EVENT_ROUND` as the `round:` option or `"1"`,
+    `TEAM_SIZE` as `maxTeamSize` from `event_category_state` (already set by
+    `/setup event`'s `max_team_size`) — no config-file-only field is needed.
+    A zone with no `/draw` assignment yet errors clearly in the plan rather
+    than being silently skipped. `blood-pact` is the first (and, as of
+    2026-07-09, only) event using this path — 30 zones imported, no
+    `config.yml`, `src/config/blood-pact/thread.md` only. This is additive:
+    any event/round that still has a `config.yml` (`balance-of-power`,
+    `bop`, etc.) keeps using the original path unchanged, including its
+    multi-map-channel splitting, which this DB-driven path doesn't support
+    (always exactly one map channel) — that's a deliberate scope limit, not
+    a bug, see the `/draw`-adjacent config.yml-minimization Future plan note.
+    `/teardown maps`'s previously-hardcoded `config.yml`-must-exist check
+    was also removed — it never actually read the file, so it was
+    accidentally blocking teardown of exactly the round state this new path
+    creates.
 - **Zone import (2026-07-05)**: `/setup zones event:<key> sheet_url:<url>
   [dryrun]` imports a staff Google Sheet's `Country`/`Type`/`Zone` columns
   (matched by header name, any column order/extras ignored; `Type` is
@@ -397,25 +420,30 @@ src/config/
   `/setup event` hasn't been run on prod for `blood-pact` or
   `balance-of-power` since this shipped — that's an intentional "publish
   when ready" step for the user, not an oversight.
-- **Config.yml minimization + `/draw` command — designed 2026-07-05,
-  `/draw` shipped 2026-07-09 for zones mode, not yet live-tested; rest not
-  started:**
-  - **Done (zones mode only)**: `/draw` (see Commands above) records the
-    team↔zone draw — a single-assignment slash command with
-    event/round-restricted `zone`/`team` autocomplete, run in
-    `#registered-teams`, not a CSV/sheet bulk import (that idea, using
-    `sheetCsvExportUrl`/`parseCsvLine`, was superseded during design — the
-    autocomplete-restricted-options approach was chosen instead so a typo
-    can't record a bogus zone/team). Writes to `event_zone_assignments`
+- **Config.yml minimization + `/draw` command — designed 2026-07-05, most
+  of zones mode shipped 2026-07-09; theatres mode and shared templates
+  still not started:**
+  - **Done (zones mode, single-map events)**: `/draw` (see Commands above)
+    records the team↔zone draw — a single-assignment slash command with
+    event-restricted `zone`/`team` autocomplete (sourced from
+    `event_zone_definitions`/approved `/registrations`, not `config.yml`),
+    run in `#registered-teams`. Writes to `event_zone_assignments`
     (`event_key`, `round_key`, `zone_number` → `team_name`). `/setup maps`
-    now falls back to it (plus that team's approved `/registrations`
-    roster) when a zone's `config.yml` entry omits `team` — so `config.yml`
-    genuinely needs no team data for a zones-mode zone using this. Theatres
-    mode (`theatre_id`/team pairing) is **not done** — deliberately
-    deferred, see the `/draw` Commands entry for why.
-  - Once theatres mode also has this, `config.yml` needs **no team data at
-    all** for zones/theatres events, matching what already happened for
-    zone country data (now DB-backed via `event_zone_definitions`).
+    now has **two paths**: the original `config.yml`-driven one (unchanged,
+    still needed for multi-map splits like `balance-of-power`, and for
+    theatres mode), and — new — a fully DB-driven path (`setupMapsFromDb`
+    in `src/index.js`) that kicks in when a round has **no `config.yml` at
+    all**: single map channel, one thread per imported zone, team +
+    roster from `/draw` + `/registrations`, only `thread.md` needed as a
+    file. `blood-pact` (30 zones, real event) is the first event on this
+    path — `config.yml` is genuinely eliminated for it, not just team data
+    within it. Theatres mode (`theatre_id`/team pairing) is **not done** —
+    deliberately deferred, see the `/draw` Commands entry for why.
+  - Multi-map zones events (`balance-of-power`-style) and theatres mode
+    still need `config.yml` for the map/zone-number structure — the
+    DB-driven path only handles the "one map, all zones" shape. Extending
+    it to a configurable map split (without reintroducing a config file)
+    is the natural next step if a multi-map DB-driven event comes up.
   - For the **registrations-only mode** (this session's `teams:
     "registrations"`, see Commands above), `config.yml` should shrink
     further to just a map *count* — there's no per-map data left to

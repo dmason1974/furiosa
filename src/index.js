@@ -930,6 +930,131 @@ function parseZonesCsv(csvText) {
 }
 
 // ---------------------------
+// /setup maps — DB-driven zones mode (no config.yml)
+// ---------------------------
+// For a zones-mode event with no config.yml at all (e.g. blood-pact): builds
+// a single map channel with one private thread per imported zone
+// (event_zone_definitions), using /draw's team assignment
+// (event_zone_assignments) and that team's approved registrations for the
+// roster. Mirrors the config.yml-driven zones block's create-or-reuse and
+// idempotency logic, just sourcing everything from the DB instead of cfg.
+async function setupMapsFromDb(interaction, guild, eventKey, round, dryrun, templatePath) {
+  if (!fs.existsSync(templatePath)) return interaction.editReply(`Thread template not found: ${templatePath}`);
+  const template = readText(templatePath);
+
+  const categoryState = await db.loadCategoryState(eventKey, DB_IS_TEST);
+  const existingCategory = categoryState.categoryId
+    ? await guild.channels.fetch(categoryState.categoryId).catch(() => null) : null;
+  const categoryId = existingCategory?.id ?? null;
+  if (!categoryId) return interaction.editReply("Category not set up yet — run `/setup event` first.");
+  await assertBotAccess(guild, categoryId);
+
+  const zoneData = await db.getZoneDefinitions(eventKey, DB_IS_TEST);
+  if (!zoneData || !zoneData.zones || Object.keys(zoneData.zones).length === 0) {
+    return interaction.editReply(
+      `No config.yml and no imported zone data for "${eventKey}" — run \`/setup zones\` first, or add a config.yml.`
+    );
+  }
+  const zoneAssignments = await db.getZoneAssignments(eventKey, round, DB_IS_TEST);
+  const registrationEntries = await db.getRegistrationEntries(eventKey, DB_IS_TEST);
+  const maxTeamSize = categoryState.maxTeamSize ?? 5;
+
+  const state = await db.loadRoundState(eventKey, round, DB_IS_TEST);
+  const channelPrefix = round ? `${eventKey}-${round}` : eventKey;
+  const channelName = `${channelPrefix}-map${pad2(1)}`;
+  const planLines = [];
+  let createdChannels = 0, createdThreads = 0, reusedChannels = 0, reusedThreads = 0;
+
+  planLines.push(`Map 1: channel #${channelName}`);
+  let mapChannelId = state.channels?.[channelName]?.id;
+  let mapChannel = mapChannelId ? await guild.channels.fetch(mapChannelId).catch(() => null) : null;
+  if (!mapChannel) mapChannel = await findChannelByNameInCategory(guild, categoryId, channelName);
+  if (!mapChannel) {
+    if (dryrun) { planLines.push(`  - would create channel`); }
+    else {
+      mapChannel = await guild.channels.create({
+        name: channelName, type: ChannelType.GuildText, parent: categoryId, reason: "Event setup",
+      });
+      createdChannels++;
+      state.channels[channelName] = { id: mapChannel.id };
+    }
+  } else {
+    reusedChannels++;
+    state.channels[channelName] = { id: mapChannel.id };
+  }
+
+  const zoneNumbers = Object.keys(zoneData.zones).map(Number).sort((a, b) => a - b);
+  for (const zoneNumber of zoneNumbers) {
+    const zone = zoneData.zones[String(zoneNumber)];
+    const assignedTeamName = zoneAssignments[zoneNumber]?.team;
+    if (!assignedTeamName) {
+      planLines.push(`  - zone ${zoneNumber}: ERROR — no /draw assignment (run /draw for this zone first)`);
+      continue;
+    }
+    const players = Object.entries(registrationEntries)
+      .filter(([, e]) => e.team === assignedTeamName && e.status === "approved")
+      .map(([playerId]) => playerId);
+
+    const threadName = slugify(assignedTeamName);
+    planLines.push(`  - zone ${zoneNumber}: would ensure private thread "${threadName}"`);
+    if (mapChannel) {
+      let threadId = state.threads?.[`${channelName}:${threadName}`]?.id;
+      let thread = threadId ? await guild.channels.fetch(threadId).catch(() => null) : null;
+      if (!thread) thread = await findThreadByName(mapChannel, threadName);
+
+      if (!thread) {
+        if (!dryrun) {
+          thread = await mapChannel.threads.create({
+            name: threadName, type: ChannelType.PrivateThread, autoArchiveDuration: 10080, reason: "Event setup",
+          });
+          createdThreads++;
+          state.threads[`${channelName}:${threadName}`] = { id: thread.id };
+        }
+      } else {
+        reusedThreads++;
+        state.threads[`${channelName}:${threadName}`] = { id: thread.id };
+      }
+
+      if (!dryrun && thread && state.threads[`${channelName}:${threadName}`]?.posted !== true) {
+        const playableLines = (zone.homeland || []).map((c) => `- ${c}`).join("\n");
+        const aiLines       = (zone.ai || []).map((c) => `- ${c}`).join("\n");
+        const body = renderTemplate(template, {
+          EVENT_NAME: eventKey, EVENT_ROUND: round || "1", EVENT_KEY: eventKey,
+          ZONE_NUMBER: String(zoneNumber), ZONE_NAME: `Zone ${zoneNumber}`,
+          TEAM_NAME: assignedTeamName,
+          PLAYABLE_COUNTRIES: playableLines || "- (none)",
+          AI_COUNTRIES: aiLines || "- (none)",
+          ADMIN_COUNTRIES: (zoneData.adminCountries || []).join(", ") || "None",
+          PLAYERS_MENTIONS: mentionList(players),
+          SUBS_MENTIONS: "- None",
+          TEAM_SIZE: String(maxTeamSize),
+        });
+        await thread.send(body);
+        await addPlayersToThread(guild, thread, players);
+        state.threads[`${channelName}:${threadName}`].posted = true;
+      }
+    }
+  }
+
+  if (!dryrun && mapChannel) {
+    const chanState = state.channels[channelName] || {};
+    if (chanState.posted !== true) {
+      await mapChannel.send(`**${eventKey}**\nMap set up. Private team threads created.`);
+      chanState.posted = true;
+      state.channels[channelName] = chanState;
+    }
+  }
+
+  if (!dryrun) await db.saveRoundState(eventKey, round, state, DB_IS_TEST);
+  if (dryrun)
+    return interaction.editReply(`Dry-run ✅ (DB-driven zones mode, no config.yml)\n\nPlan:\n${planLines.map((l) => `• ${l}`).join("\n")}`);
+  return interaction.editReply(
+    `Done ✅ (DB-driven zones mode)\nCreated: ${createdChannels} channels, ${createdThreads} threads\n` +
+    `Reused: ${reusedChannels} channels, ${reusedThreads} threads`
+  );
+}
+
+// ---------------------------
 // Registrations
 // ---------------------------
 async function syncRegisteredTeamsChannel(guild, eventKey) {
@@ -1638,7 +1763,7 @@ client.on("interactionCreate", async (interaction) => {
       const configPath   = path.join(roundDir(eventKey, round), "config.yml");
       const templatePath = path.join(roundDir(eventKey, round), "thread.md");
 
-      if (!fs.existsSync(configPath))   return interaction.editReply(`Config not found: ${configPath}`);
+      if (!fs.existsSync(configPath)) return await setupMapsFromDb(interaction, guild, eventKey, round, dryrun, templatePath);
       if (!fs.existsSync(templatePath)) return interaction.editReply(`Thread template not found: ${templatePath}`);
 
       const cfg      = readYaml(configPath);
@@ -1987,9 +2112,6 @@ client.on("interactionCreate", async (interaction) => {
       const round       = interaction.options.getString("round") || null;
       const dryrun      = interaction.options.getBoolean("dryrun") ?? false;
       const deleteState = interaction.options.getBoolean("delete_state") ?? false;
-      const configPath  = path.join(roundDir(eventKey, round), "config.yml");
-
-      if (!fs.existsSync(configPath)) return interaction.editReply(`Config not found: ${configPath}`);
 
       const state = await db.loadRoundState(eventKey, round, DB_IS_TEST);
 
