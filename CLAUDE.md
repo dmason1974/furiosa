@@ -289,6 +289,33 @@ src/config/
 
 ## Discord quirks learned the hard way (don't re-litigate these)
 
+- **A "reuse existing channel/thread" branch that does `state.X[key] = { id }`
+  silently wipes any other tracked fields on that entry — in particular
+  `posted`.** Found 2026-07-09 testing `/setup maps` against `blood-pact`:
+  re-running the command re-sent the map channel's intro message every
+  time, because the "channel already exists" branch overwrote
+  `state.channels[channelName]` with a bare `{ id: mapChannel.id }`,
+  dropping the `posted: true` flag a prior run had set — so the very next
+  `if (chanState.posted !== true)` check always saw a channel that looked
+  never-posted. The same pattern existed for threads in all three map
+  modes (theatres/zones/registrations) and in the new DB-driven zones
+  path — none of them had actually been idempotency-tested against a
+  second run before this. Fixed everywhere by spreading the existing entry
+  first: `state.X[key] = { ...state.X[key], id }`, so `posted` (and
+  anything else tracked there) survives a "reused" pass. **Lesson**: when
+  a piece of state is both "the ID to look up next time" and "a flag that
+  guards a one-time side effect," never blindly overwrite the whole object
+  on the lookup path — always merge.
+- Map channel intro messages (`/setup maps`, both the `config.yml`-driven
+  and DB-driven paths) are now pinned after sending, same reasoning as the
+  zones-index header message and the rules-index message — the
+  channel-setup announcement should be easy to find later, not scroll off.
+- `mentionList()` (`src/index.js`) joins player/sub mentions with `\n`, not
+  a space — each player's `<@id>` mention renders on its own line in
+  `thread.md`'s `{{PLAYERS_MENTIONS}}`/`{{SUBS_MENTIONS}}` output. Changed
+  2026-07-09 after the space-joined version rendered as one long run-on
+  line; applies to every mode (theatres/zones/registrations/DB-driven)
+  since they all go through the same helper.
 - **Slash commands need `SendMessages`, not just `UseApplicationCommands`,
   in a channel that denies the former.** Tested directly: granting only
   `UseApplicationCommands` to the Warboy role in `#registration` did NOT let

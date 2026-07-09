@@ -97,7 +97,7 @@ function renderTemplate(template, vars) {
 }
 
 function mentionList(userIds) {
-  return (userIds || []).map((id) => `<@${id}>`).join(" ");
+  return (userIds || []).map((id) => `<@${id}>`).join("\n");
 }
 
 function parseMentions(str) {
@@ -980,7 +980,7 @@ async function setupMapsFromDb(interaction, guild, eventKey, round, dryrun, temp
     }
   } else {
     reusedChannels++;
-    state.channels[channelName] = { id: mapChannel.id };
+    state.channels[channelName] = { ...state.channels[channelName], id: mapChannel.id };
   }
 
   const zoneNumbers = Object.keys(zoneData.zones).map(Number).sort((a, b) => a - b);
@@ -1012,7 +1012,7 @@ async function setupMapsFromDb(interaction, guild, eventKey, round, dryrun, temp
         }
       } else {
         reusedThreads++;
-        state.threads[`${channelName}:${threadName}`] = { id: thread.id };
+        state.threads[`${channelName}:${threadName}`] = { ...state.threads[`${channelName}:${threadName}`], id: thread.id };
       }
 
       if (!dryrun && thread && state.threads[`${channelName}:${threadName}`]?.posted !== true) {
@@ -1039,7 +1039,8 @@ async function setupMapsFromDb(interaction, guild, eventKey, round, dryrun, temp
   if (!dryrun && mapChannel) {
     const chanState = state.channels[channelName] || {};
     if (chanState.posted !== true) {
-      await mapChannel.send(`**${eventKey}**\nMap set up. Private team threads created.`);
+      const introMsg = await mapChannel.send(`**${eventKey}**\nMap set up. Private team threads created.`);
+      await introMsg.pin().catch((e) => console.log(`Failed to pin map intro message: ${String(e?.message || e)}`));
       chanState.posted = true;
       state.channels[channelName] = chanState;
     }
@@ -1816,7 +1817,7 @@ client.on("interactionCreate", async (interaction) => {
           }
         } else {
           reusedChannels++;
-          state.channels[channelName] = { id: mapChannel.id };
+          state.channels[channelName] = { ...state.channels[channelName], id: mapChannel.id };
         }
 
         if (Array.isArray(map.theatres)) {
@@ -1843,7 +1844,7 @@ client.on("interactionCreate", async (interaction) => {
                 }
               } else {
                 reusedThreads++;
-                state.threads[`${channelName}:${threadName}`] = { id: thread.id };
+                state.threads[`${channelName}:${threadName}`] = { ...state.threads[`${channelName}:${threadName}`], id: thread.id };
               }
 
               if (!dryrun && thread && state.threads[`${channelName}:${threadName}`]?.posted !== true) {
@@ -1917,7 +1918,7 @@ client.on("interactionCreate", async (interaction) => {
               }
             } else {
               reusedThreads++;
-              state.threads[`${channelName}:${threadName}`] = { id: thread.id };
+              state.threads[`${channelName}:${threadName}`] = { ...state.threads[`${channelName}:${threadName}`], id: thread.id };
             }
 
             if (!dryrun && thread && state.threads[`${channelName}:${threadName}`]?.posted !== true) {
@@ -1965,7 +1966,7 @@ client.on("interactionCreate", async (interaction) => {
               }
             } else {
               reusedThreads++;
-              state.threads[`${channelName}:${threadName}`] = { id: thread.id };
+              state.threads[`${channelName}:${threadName}`] = { ...state.threads[`${channelName}:${threadName}`], id: thread.id };
             }
 
             if (!dryrun && thread && state.threads[`${channelName}:${threadName}`]?.posted !== true) {
@@ -1988,7 +1989,8 @@ client.on("interactionCreate", async (interaction) => {
         if (!dryrun && mapChannel) {
           const chanState = state.channels[channelName] || {};
           if (chanState.posted !== true) {
-            await mapChannel.send(`**${cfg.event.name}**\nMap ${pad2(map.mapNumber)} set up. Private team threads created.`);
+            const introMsg = await mapChannel.send(`**${cfg.event.name}**\nMap ${pad2(map.mapNumber)} set up. Private team threads created.`);
+            await introMsg.pin().catch((e) => console.log(`Failed to pin map intro message: ${String(e?.message || e)}`));
             chanState.posted = true;
             state.channels[channelName] = chanState;
           }

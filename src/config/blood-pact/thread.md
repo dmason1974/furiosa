@@ -6,7 +6,7 @@
 ---
 
 ### Your Team
-**Team:** {{TEAM_NAME}}
+{{TEAM_NAME}}
 **Team size:** {{TEAM_SIZE}}
 
 ### Players
