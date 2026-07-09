@@ -212,18 +212,21 @@ src/config/
   The actual team↔zone draw happens externally on **random.org**; this
   command doesn't randomize anything, it just records a result staff already
   decided. Both `zone` and `team` are autocomplete options **restricted to
-  what's valid for that event/round**: `zone` only offers zone numbers
-  defined in that round's `config.yml`, annotated with their current
-  assignment if any; `team` only offers that event's *approved*
-  `/registrations` teams, annotated with their current zone if already
-  assigned. (Discord doesn't hard-enforce autocomplete values — a client
-  could still submit arbitrary text — so the handler re-validates both
-  server-side before writing.) Reassigning a team to a new zone
-  automatically vacates its old zone (a team can never be double-booked
-  across two zones in the same round) — see `setZoneAssignment` in
-  `src/db.js`, which does this as a transaction (delete-old, then
-  upsert-new). Backed by a new `event_zone_assignments` table
-  (`event_key`, `round_key`, `zone_number` → `team_name`), read by
+  what's valid for that event**: `zone` only offers zone numbers already
+  imported for that event via `/setup zones` (`event_zone_definitions` —
+  deliberately **not** `config.yml`, since a zones-mode event may have zone
+  country data imported without ever having a `config.yml`/map structure —
+  `blood-pact` is exactly this case, 30 imported zones and no `config.yml`
+  at all), annotated with their current assignment if any; `team` only
+  offers that event's *approved* `/registrations` teams, annotated with
+  their current zone if already assigned. (Discord doesn't hard-enforce
+  autocomplete values — a client could still submit arbitrary text — so the
+  handler re-validates both server-side before writing.) Reassigning a team
+  to a new zone automatically vacates its old zone (a team can never be
+  double-booked across two zones in the same round) — see
+  `setZoneAssignment` in `src/db.js`, which does this as a transaction
+  (delete-old, then upsert-new). Backed by a new `event_zone_assignments`
+  table (`event_key`, `round_key`, `zone_number` → `team_name`), read by
   `/setup maps`: a zone's `config.yml` entry may now omit `team` entirely —
   if so, `/setup maps` looks up the `/draw` assignment for that zone number,
   then builds the roster live from that team's *approved* `/registrations`
@@ -232,14 +235,15 @@ src/config/
   logic). If neither a hand-authored `config.yml` team nor a `/draw`
   assignment exists for a zone, that zone errors clearly in the `/setup
   maps` plan instead of silently skipping. `validateConfig()`'s zone `team`
-  check is now optional accordingly (previously hard-required). Verified via
-  `node --check` + hand-traced `validateConfig()` against both the existing
-  hand-authored configs (`blood-pact`, `balance-of-power` — unaffected,
-  still pass) and a new throwaway `src/config/zone-draw-test-event/` config
-  (2 zones, no `team:` key, built specifically to exercise the new fallback
-  path) — **not yet live-tested in Discord** (needs `/setup event` +
-  `/register`/`/registrations approve` + `/draw` + `/setup maps` run against
-  `furiosa-test`, next session).
+  check is now optional accordingly (previously hard-required).
+  `/setup maps` itself still hard-requires a `config.yml` to exist at all
+  (map channel structure isn't DB-backed yet) — so `/draw` can now be fully
+  exercised against `blood-pact` (real event, real imported zones, real
+  approved registrations) even though `/setup maps` can't run for it yet
+  without one being authored. **Live-tested against `furiosa-test` this
+  session** — first pass had `zone` autocomplete reading `config.yml` (this
+  is what got corrected above; caught because `blood-pact` has no
+  `config.yml`, so the dropdown was silently empty).
   - **Deliberately deferred**: theatres-mode draw (`bop`-style events).
     Theatres have two team slots per theatre plus a `countryPool` per slot —
     a meaningfully different shape than zones' one-team-per-zone — so it

@@ -1079,12 +1079,8 @@ client.on("interactionCreate", async (interaction) => {
         const focused    = String(focusedOpt.value).toLowerCase();
 
         if (focusedOpt.name === "zone") {
-          const configPath = path.join(roundDir(eventKey, round), "config.yml");
-          if (!fs.existsSync(configPath)) return interaction.respond([]);
-          const cfg = readYaml(configPath);
-          const zoneNumbers = [...new Set(
-            (cfg.maps || []).flatMap((m) => (m.zones || []).map((z) => z.zoneNumber))
-          )].sort((a, b) => a - b);
+          const zoneDefs = await db.getZoneDefinitions(eventKey, DB_IS_TEST);
+          const zoneNumbers = Object.keys(zoneDefs?.zones || {}).map(Number).sort((a, b) => a - b);
           const assignments = await db.getZoneAssignments(eventKey, round, DB_IS_TEST);
           const choices = zoneNumbers
             .filter((z) => String(z).includes(focused))
@@ -2035,17 +2031,13 @@ client.on("interactionCreate", async (interaction) => {
       const zoneNumber = interaction.options.getInteger("zone");
       const team       = interaction.options.getString("team");
 
-      const configPath = path.join(roundDir(eventKey, round), "config.yml");
-      if (!fs.existsSync(configPath)) return interaction.editReply(`Config not found: ${configPath}`);
-      const cfg = readYaml(configPath);
-      const validZones = new Set(
-        (cfg.maps || []).flatMap((m) => (m.zones || []).map((z) => z.zoneNumber))
-      );
+      const zoneDefs = await db.getZoneDefinitions(eventKey, DB_IS_TEST);
+      const validZones = new Set(Object.keys(zoneDefs?.zones || {}).map(Number));
       if (validZones.size === 0) {
-        return interaction.editReply("This round's config doesn't use zone-based teams.");
+        return interaction.editReply(`No zone data imported for "${eventKey}" yet — run \`/setup zones\` first.`);
       }
       if (!validZones.has(zoneNumber)) {
-        return interaction.editReply(`Zone ${zoneNumber} isn't defined in this round's config.`);
+        return interaction.editReply(`Zone ${zoneNumber} isn't part of "${eventKey}"'s imported zone data.`);
       }
 
       const entries = await db.getRegistrationEntries(eventKey, DB_IS_TEST);
