@@ -174,6 +174,16 @@ async function initSchema(isTest = false) {
       zone_messages     JSONB       NOT NULL DEFAULT '{}',
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS event_zone_assignments (
+      event_key   TEXT        NOT NULL,
+      round_key   TEXT        NOT NULL DEFAULT '',
+      zone_number INTEGER     NOT NULL,
+      team_name   TEXT        NOT NULL,
+      assigned_by TEXT,
+      assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (event_key, round_key, zone_number)
+    );
   `);
 
   // Safe upgrades for existing deployments
@@ -732,6 +742,54 @@ async function saveZonesIndexState(eventKey, state, isTest = false) {
   );
 }
 
+// ---------------------------
+// Zone assignments (team <-> zone draw, recorded via /draw)
+// ---------------------------
+async function getZoneAssignments(eventKey, round, isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT zone_number, team_name, assigned_by, assigned_at
+     FROM event_zone_assignments WHERE event_key = $1 AND round_key = $2`,
+    [eventKey, round || ""]
+  );
+  const assignments = {};
+  for (const r of rows) {
+    assignments[r.zone_number] = {
+      team: r.team_name,
+      assignedBy: r.assigned_by,
+      assignedAt: r.assigned_at.toISOString(),
+    };
+  }
+  return assignments;
+}
+
+async function setZoneAssignment(eventKey, round, zoneNumber, teamName, assignedBy, isTest = false) {
+  const roundKey = round || "";
+  const client = await getPool(isTest).connect();
+  try {
+    await client.query("BEGIN");
+    // Vacate the team's previous zone in this round, if it had one, so a
+    // team can never end up double-booked across two zones.
+    await client.query(
+      `DELETE FROM event_zone_assignments
+       WHERE event_key = $1 AND round_key = $2 AND team_name = $3 AND zone_number != $4`,
+      [eventKey, roundKey, teamName, zoneNumber]
+    );
+    await client.query(
+      `INSERT INTO event_zone_assignments (event_key, round_key, zone_number, team_name, assigned_by, assigned_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (event_key, round_key, zone_number) DO UPDATE
+         SET team_name = EXCLUDED.team_name, assigned_by = EXCLUDED.assigned_by, assigned_at = NOW()`,
+      [eventKey, roundKey, zoneNumber, teamName, assignedBy]
+    );
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   getPool, initSchema,
   upsertPlayer, getPlayers, getRatings,
@@ -746,4 +804,5 @@ module.exports = {
   loadRoundState, saveRoundState, deleteRoundState, findLingeringRoundStates,
   loadRulesIndexState, saveRulesIndexState,
   getZoneDefinitions, saveZoneDefinitions, loadZonesIndexState, saveZonesIndexState,
+  getZoneAssignments, setZoneAssignment,
 };

@@ -170,16 +170,21 @@ function validateConfig(cfg) {
           // that zone's imported data (see /setup zones import, event_zone_definitions).
           if (z.homeland != null && !Array.isArray(z.homeland)) errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: homeland must be an array when provided`);
           if (z.ai != null && !Array.isArray(z.ai))             errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: ai must be an array when provided`);
-          if (!z.team || typeof z.team !== "object") {
-            errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: missing team object`);
-          } else {
-            if (!z.team.teamName) errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: team missing teamName`);
-            if (!Array.isArray(z.team.players)) errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: team.players must be array`);
-            if (z.team.subs != null && !Array.isArray(z.team.subs))
-              errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: team.subs must be array when provided`);
-            if (Array.isArray(z.team.players) && Number.isInteger(cfg.event?.teamSize) &&
-                z.team.players.length > cfg.event.teamSize)
-              errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber} (${z.team.teamName}): has ${z.team.players.length} players but teamSize is ${cfg.event.teamSize}`);
+          // team is optional here: if omitted, /setup maps falls back to a /draw
+          // assignment (see event_zone_assignments) and that zone's approved
+          // registrations for the roster.
+          if (z.team != null) {
+            if (typeof z.team !== "object") {
+              errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: team must be an object when provided`);
+            } else {
+              if (!z.team.teamName) errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: team missing teamName`);
+              if (!Array.isArray(z.team.players)) errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: team.players must be array`);
+              if (z.team.subs != null && !Array.isArray(z.team.subs))
+                errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber}: team.subs must be array when provided`);
+              if (Array.isArray(z.team.players) && Number.isInteger(cfg.event?.teamSize) &&
+                  z.team.players.length > cfg.event.teamSize)
+                errs.push(`Map ${m.mapNumber} zone ${z.zoneNumber} (${z.team.teamName}): has ${z.team.players.length} players but teamSize is ${cfg.event.teamSize}`);
+            }
           }
         }
       }
@@ -269,6 +274,20 @@ const registerCommand = new SlashCommandBuilder()
 const unregisterCommand = new SlashCommandBuilder()
   .setName("unregister")
   .setDescription("Withdraw your own registration for this event (run in #registration)");
+
+const drawCommand = new SlashCommandBuilder()
+  .setName("draw")
+  .setDescription("Record which approved team is assigned to which zone (run in #registered-teams)")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+  .addIntegerOption((o) =>
+    o.setName("zone").setDescription("Zone number").setRequired(true).setAutocomplete(true)
+  )
+  .addStringOption((o) =>
+    o.setName("team").setDescription("Approved team name").setRequired(true).setAutocomplete(true)
+  )
+  .addStringOption((o) =>
+    o.setName("round").setDescription("Round subdirectory name (omit if the event has no rounds)")
+  );
 
 const registrationsCommand = new SlashCommandBuilder()
   .setName("registrations")
@@ -1027,6 +1046,7 @@ client.once("ready", async () => {
     teardownCommand,
     registerCommand,
     unregisterCommand,
+    drawCommand,
     registrationsCommand,
     syncMembersCommand,
     lobbyCommand,
@@ -1045,10 +1065,58 @@ client.once("ready", async () => {
 // ---------------------------
 client.on("interactionCreate", async (interaction) => {
   try {
-    // Autocomplete for /register team, /registrations approve|reject_team team, and
-    // /record_result match field
+    // Autocomplete for /register team, /registrations approve|reject_team team,
+    // /draw zone|team, and /record_result match field
     if (interaction.isAutocomplete()) {
       const cmd = interaction.commandName;
+
+      if (cmd === "draw") {
+        if (!isStaff(interaction)) return interaction.respond([]);
+        const eventKey = await eventKeyForCategory(interaction.channel?.parentId);
+        if (!eventKey) return interaction.respond([]);
+        const round     = interaction.options.getString("round") || null;
+        const focusedOpt = interaction.options.getFocused(true);
+        const focused    = String(focusedOpt.value).toLowerCase();
+
+        if (focusedOpt.name === "zone") {
+          const configPath = path.join(roundDir(eventKey, round), "config.yml");
+          if (!fs.existsSync(configPath)) return interaction.respond([]);
+          const cfg = readYaml(configPath);
+          const zoneNumbers = [...new Set(
+            (cfg.maps || []).flatMap((m) => (m.zones || []).map((z) => z.zoneNumber))
+          )].sort((a, b) => a - b);
+          const assignments = await db.getZoneAssignments(eventKey, round, DB_IS_TEST);
+          const choices = zoneNumbers
+            .filter((z) => String(z).includes(focused))
+            .slice(0, 25)
+            .map((z) => ({
+              name: assignments[z] ? `Zone ${z} (currently: ${assignments[z].team})` : `Zone ${z} (unassigned)`,
+              value: z,
+            }));
+          return interaction.respond(choices);
+        }
+
+        if (focusedOpt.name === "team") {
+          const entries = await db.getRegistrationEntries(eventKey, DB_IS_TEST);
+          const approvedTeams = [...new Set(
+            Object.values(entries).filter((e) => e.status === "approved").map((e) => e.team)
+          )];
+          const assignments   = await db.getZoneAssignments(eventKey, round, DB_IS_TEST);
+          const assignedTeams = new Map(Object.entries(assignments).map(([z, a]) => [a.team, z]));
+          const choices = approvedTeams
+            .filter((t) => t.toLowerCase().includes(focused))
+            .sort((a, b) => (assignedTeams.has(a) ? 1 : 0) - (assignedTeams.has(b) ? 1 : 0))
+            .slice(0, 25)
+            .map((t) => ({
+              name: assignedTeams.has(t) ? `${t} (zone ${assignedTeams.get(t)})` : t,
+              value: t,
+            }));
+          return interaction.respond(choices);
+        }
+
+        return interaction.respond([]);
+      }
+
       const isTeamAutocomplete =
         cmd === "register" ||
         (cmd === "registrations" && ["approve", "reject_team"].includes(interaction.options.getSubcommand()));
@@ -1596,6 +1664,7 @@ client.on("interactionCreate", async (interaction) => {
       const planLines = [];
       let createdChannels = 0, createdThreads = 0, reusedChannels = 0, reusedThreads = 0;
       const zoneData = await db.getZoneDefinitions(eventKey, DB_IS_TEST);
+      const zoneAssignments = await db.getZoneAssignments(eventKey, round, DB_IS_TEST);
 
       // For maps with `teams: registrations` (below) — team rosters come
       // live from approved /register entries instead of being hand-authored
@@ -1683,8 +1752,21 @@ client.on("interactionCreate", async (interaction) => {
 
         if (Array.isArray(map.zones)) {
           for (const zone of map.zones) {
-            const team = zone.team;
-            if (!team) continue;
+            let team = zone.team;
+            if (!team) {
+              const assignedTeamName = zoneAssignments[zone.zoneNumber]?.team;
+              if (!assignedTeamName) {
+                planLines.push(
+                  `  - zone ${zone.zoneNumber}: ERROR — no team in config.yml and no /draw assignment ` +
+                  `(run /draw for this zone first)`
+                );
+                continue;
+              }
+              const players = Object.entries(registrationEntries)
+                .filter(([, e]) => e.team === assignedTeamName && e.status === "approved")
+                .map(([playerId]) => playerId);
+              team = { teamName: assignedTeamName, players, subs: [] };
+            }
 
             const dbZone = zoneData?.zones?.[String(zone.zoneNumber)];
             const homeland = zone.homeland ?? dbZone?.homeland;
@@ -1939,6 +2021,49 @@ client.on("interactionCreate", async (interaction) => {
 
       return interaction.editReply(
         `Teardown complete ✅\nDeleted ${deletedThreads} threads and ${deletedChannels} channels.`
+      );
+    }
+
+    // ---- /draw ----
+    if (interaction.commandName === "draw") {
+      const eventKey = await eventKeyForCategory(interaction.channel?.parentId);
+      if (!eventKey) {
+        return interaction.editReply("Please run this in an event's #registered-teams channel.");
+      }
+
+      const round      = interaction.options.getString("round") || null;
+      const zoneNumber = interaction.options.getInteger("zone");
+      const team       = interaction.options.getString("team");
+
+      const configPath = path.join(roundDir(eventKey, round), "config.yml");
+      if (!fs.existsSync(configPath)) return interaction.editReply(`Config not found: ${configPath}`);
+      const cfg = readYaml(configPath);
+      const validZones = new Set(
+        (cfg.maps || []).flatMap((m) => (m.zones || []).map((z) => z.zoneNumber))
+      );
+      if (validZones.size === 0) {
+        return interaction.editReply("This round's config doesn't use zone-based teams.");
+      }
+      if (!validZones.has(zoneNumber)) {
+        return interaction.editReply(`Zone ${zoneNumber} isn't defined in this round's config.`);
+      }
+
+      const entries = await db.getRegistrationEntries(eventKey, DB_IS_TEST);
+      const approvedTeams = new Set(
+        Object.values(entries).filter((e) => e.status === "approved").map((e) => e.team)
+      );
+      if (!approvedTeams.has(team)) {
+        return interaction.editReply(`"${team}" isn't an approved team for this event.`);
+      }
+
+      await db.setZoneAssignment(eventKey, round, zoneNumber, team, interaction.user.id, DB_IS_TEST);
+
+      const assignments = await db.getZoneAssignments(eventKey, round, DB_IS_TEST);
+      const lines = [...validZones].sort((a, b) => a - b)
+        .map((z) => `Zone ${z}: ${assignments[z]?.team ?? "_unassigned_"}`);
+
+      return interaction.editReply(
+        `✅ Assigned **${team}** to Zone ${zoneNumber}.\n\nCurrent draw:\n${lines.join("\n")}`
       );
     }
 

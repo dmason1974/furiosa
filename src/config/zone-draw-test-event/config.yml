@@ -1,0 +1,21 @@
+version: 5
+
+event:
+  key: "zone-draw-test-event"
+  name: "Zone Draw Test Event"
+  round: 1
+  teamSize: 2
+
+maps:
+  - mapNumber: 1
+    zones:
+      - zoneNumber: 1
+        homeland:
+          - Testland
+        ai:
+          - Testonia
+      - zoneNumber: 2
+        homeland:
+          - Otherland
+        ai:
+          - Otheronia

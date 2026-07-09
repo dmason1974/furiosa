@@ -203,6 +203,48 @@ src/config/
   - **Known gap, deliberately deferred**: `/teardown event` does not delete
     `registrations.json`. Tearing down and recreating an event will resurface
     old registrations. Flagged, not fixed — revisit if it causes confusion.
+- **`/draw zone:<n> team:<name> [round:<key>]` (2026-07-09)** — records which
+  approved team is assigned to which zone number, for **zones-mode events
+  only** (`blood-pact`, `balance-of-power`; theatres mode, e.g. `bop`, is
+  explicitly out of scope for now — see below). Run inside that event's
+  `#registered-teams` channel; the event is inferred from the channel's
+  parent category, same as `/register`/`/unregister` — no `event:` option.
+  The actual team↔zone draw happens externally on **random.org**; this
+  command doesn't randomize anything, it just records a result staff already
+  decided. Both `zone` and `team` are autocomplete options **restricted to
+  what's valid for that event/round**: `zone` only offers zone numbers
+  defined in that round's `config.yml`, annotated with their current
+  assignment if any; `team` only offers that event's *approved*
+  `/registrations` teams, annotated with their current zone if already
+  assigned. (Discord doesn't hard-enforce autocomplete values — a client
+  could still submit arbitrary text — so the handler re-validates both
+  server-side before writing.) Reassigning a team to a new zone
+  automatically vacates its old zone (a team can never be double-booked
+  across two zones in the same round) — see `setZoneAssignment` in
+  `src/db.js`, which does this as a transaction (delete-old, then
+  upsert-new). Backed by a new `event_zone_assignments` table
+  (`event_key`, `round_key`, `zone_number` → `team_name`), read by
+  `/setup maps`: a zone's `config.yml` entry may now omit `team` entirely —
+  if so, `/setup maps` looks up the `/draw` assignment for that zone number,
+  then builds the roster live from that team's *approved* `/registrations`
+  entries (mirroring the fallback pattern already used for zone
+  homeland/ai country data, and the `teams: "registrations"` mode's roster
+  logic). If neither a hand-authored `config.yml` team nor a `/draw`
+  assignment exists for a zone, that zone errors clearly in the `/setup
+  maps` plan instead of silently skipping. `validateConfig()`'s zone `team`
+  check is now optional accordingly (previously hard-required). Verified via
+  `node --check` + hand-traced `validateConfig()` against both the existing
+  hand-authored configs (`blood-pact`, `balance-of-power` — unaffected,
+  still pass) and a new throwaway `src/config/zone-draw-test-event/` config
+  (2 zones, no `team:` key, built specifically to exercise the new fallback
+  path) — **not yet live-tested in Discord** (needs `/setup event` +
+  `/register`/`/registrations approve` + `/draw` + `/setup maps` run against
+  `furiosa-test`, next session).
+  - **Deliberately deferred**: theatres-mode draw (`bop`-style events).
+    Theatres have two team slots per theatre plus a `countryPool` per slot —
+    a meaningfully different shape than zones' one-team-per-zone — so it
+    wasn't built speculatively alongside this. Same
+    fallback-from-registrations pattern should extend cleanly when needed.
 - `/lobby`, `/matchmake`, `/create_match`, `/record_result`, `/season`,
   `/league` — matchmaking/ELO system, **WIP, not load-bearing**. Backed by
   Postgres (`src/db.js`, `src/elo.js`). See "Known constraints" below.
@@ -351,24 +393,25 @@ src/config/
   `/setup event` hasn't been run on prod for `blood-pact` or
   `balance-of-power` since this shipped — that's an intentional "publish
   when ready" step for the user, not an oversight.
-- **Config.yml minimization + `/draw` command — designed 2026-07-05, not
-  started, the main planned work for next session:**
-  - The team↔zone/theatre "draw" (currently hand-authored into a round's
-    `config.yml`) is done externally on **random.org**, not by the bot —
-    so the planned `/draw` command doesn't do any randomization itself, it
-    just **records** a result staff already produced. Likely input
-    mechanism: reuse the same "paste a sheet/CSV" pattern as
-    `/setup zones` (`sheetCsvExportUrl`/`parseCsvLine` in `src/index.js`
-    are already generic enough to reuse), since staff will have the draw
-    result recorded somewhere. Writes to a **new table** (not yet created)
-    — something like `event_zone_assignments` (event_key, round_key,
-    zone_number → team_name, or a theatre_id/team pairing for theatres
-    mode).
-  - Once that exists, `/setup maps` should read team assignments from it
-    instead of from `config.yml`'s `zone.team`/`theatre.teams` — at which
-    point `config.yml` needs **no team data at all** for zones/theatres
-    events, matching what already happened for zone country data (now
-    DB-backed via `event_zone_definitions`).
+- **Config.yml minimization + `/draw` command — designed 2026-07-05,
+  `/draw` shipped 2026-07-09 for zones mode, not yet live-tested; rest not
+  started:**
+  - **Done (zones mode only)**: `/draw` (see Commands above) records the
+    team↔zone draw — a single-assignment slash command with
+    event/round-restricted `zone`/`team` autocomplete, run in
+    `#registered-teams`, not a CSV/sheet bulk import (that idea, using
+    `sheetCsvExportUrl`/`parseCsvLine`, was superseded during design — the
+    autocomplete-restricted-options approach was chosen instead so a typo
+    can't record a bogus zone/team). Writes to `event_zone_assignments`
+    (`event_key`, `round_key`, `zone_number` → `team_name`). `/setup maps`
+    now falls back to it (plus that team's approved `/registrations`
+    roster) when a zone's `config.yml` entry omits `team` — so `config.yml`
+    genuinely needs no team data for a zones-mode zone using this. Theatres
+    mode (`theatre_id`/team pairing) is **not done** — deliberately
+    deferred, see the `/draw` Commands entry for why.
+  - Once theatres mode also has this, `config.yml` needs **no team data at
+    all** for zones/theatres events, matching what already happened for
+    zone country data (now DB-backed via `event_zone_definitions`).
   - For the **registrations-only mode** (this session's `teams:
     "registrations"`, see Commands above), `config.yml` should shrink
     further to just a map *count* — there's no per-map data left to
