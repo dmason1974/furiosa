@@ -235,21 +235,28 @@ src/config/
   The actual team↔zone draw happens externally on **random.org**; this
   command doesn't randomize anything, it just records a result staff already
   decided. Both `zone` and `team` are autocomplete options **restricted to
-  what's valid for that event**: `zone` only offers zone numbers already
-  imported for that event via `/setup zones` (`event_zone_definitions` —
-  deliberately **not** `config.yml`, since a zones-mode event may have zone
-  country data imported without ever having a `config.yml`/map structure —
-  `blood-pact` is exactly this case, 30 imported zones and no `config.yml`
-  at all), annotated with their current assignment if any; `team` only
-  offers that event's *approved* `/registrations` teams, annotated with
-  their current zone if already assigned. (Discord doesn't hard-enforce
-  autocomplete values — a client could still submit arbitrary text — so the
-  handler re-validates both server-side before writing.) Reassigning a team
-  to a new zone automatically vacates its old zone (a team can never be
-  double-booked across two zones in the same round) — see
-  `setZoneAssignment` in `src/db.js`, which does this as a transaction
-  (delete-old, then upsert-new). Backed by a new `event_zone_assignments`
-  table (`event_key`, `round_key`, `zone_number` → `team_name`), read by
+  what's valid for that event, as a reducing set**: `zone` only offers zone
+  numbers already imported for that event via `/setup zones`
+  (`event_zone_definitions` — deliberately **not** `config.yml`, since a
+  zones-mode event may have zone country data imported without ever having
+  a `config.yml`/map structure — `blood-pact` is exactly this case, 30
+  imported zones and no `config.yml` at all) that **don't already have a
+  `/draw` assignment**; `team` only offers that event's *approved*
+  `/registrations` teams that **aren't already assigned to a zone**. Zone
+  and team are each one-time picks — once assigned, `/draw` has no
+  reassign/overwrite path (the handler hard-rejects both "zone already
+  assigned" and "team already assigned elsewhere" before writing, on top of
+  Discord not hard-enforcing autocomplete values in the first place —
+  a client could still submit arbitrary text past the dropdown, so this
+  validation matters even though the dropdown itself already excludes
+  those options). `setZoneAssignment` in `src/db.js` still contains a
+  vacate-old-zone-then-insert transaction from an earlier design where
+  reassignment was allowed; it's unreachable in the current flow (the
+  handler's checks mean it's only ever called with a genuinely new
+  zone+team pair) — left in as a harmless no-op rather than stripped, in
+  case a future `/draw unassign`-style correction command reintroduces
+  reassignment. Backed by a new `event_zone_assignments` table
+  (`event_key`, `round_key`, `zone_number` → `team_name`), read by
   `/setup maps`: a zone's `config.yml` entry may now omit `team` entirely —
   if so, `/setup maps` looks up the `/draw` assignment for that zone number,
   then builds the roster live from that team's *approved* `/registrations`
@@ -264,9 +271,13 @@ src/config/
   exercised against `blood-pact` (real event, real imported zones, real
   approved registrations) even though `/setup maps` can't run for it yet
   without one being authored. **Live-tested against `furiosa-test` this
-  session** — first pass had `zone` autocomplete reading `config.yml` (this
-  is what got corrected above; caught because `blood-pact` has no
-  `config.yml`, so the dropdown was silently empty).
+  session, two bugs caught and fixed in the process**: first pass had `zone`
+  autocomplete reading `config.yml` (corrected above; caught because
+  `blood-pact` has no `config.yml`, so the dropdown was silently empty);
+  second pass had both dropdowns showing every zone/team rather than
+  shrinking as the draw progressed, which made it possible to re-pick an
+  already-assigned zone or team (corrected to the reducing-set + hard-reject
+  behavior described above).
   - **Deliberately deferred**: theatres-mode draw (`bop`-style events).
     Theatres have two team slots per theatre plus a `countryPool` per slot —
     a meaningfully different shape than zones' one-team-per-zone — so it

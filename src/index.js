@@ -1207,13 +1207,13 @@ client.on("interactionCreate", async (interaction) => {
           const zoneDefs = await db.getZoneDefinitions(eventKey, DB_IS_TEST);
           const zoneNumbers = Object.keys(zoneDefs?.zones || {}).map(Number).sort((a, b) => a - b);
           const assignments = await db.getZoneAssignments(eventKey, round, DB_IS_TEST);
+          // Reducing set: a zone drops off the list once it's assigned, since
+          // /draw doesn't support reassigning — nothing left to pick it for.
           const choices = zoneNumbers
+            .filter((z) => !assignments[z])
             .filter((z) => String(z).includes(focused))
             .slice(0, 25)
-            .map((z) => ({
-              name: assignments[z] ? `Zone ${z} (currently: ${assignments[z].team})` : `Zone ${z} (unassigned)`,
-              value: z,
-            }));
+            .map((z) => ({ name: `Zone ${z}`, value: z }));
           return interaction.respond(choices);
         }
 
@@ -1223,15 +1223,13 @@ client.on("interactionCreate", async (interaction) => {
             Object.values(entries).filter((e) => e.status === "approved").map((e) => e.team)
           )];
           const assignments   = await db.getZoneAssignments(eventKey, round, DB_IS_TEST);
-          const assignedTeams = new Map(Object.entries(assignments).map(([z, a]) => [a.team, z]));
+          const assignedTeams = new Set(Object.values(assignments).map((a) => a.team));
+          // Reducing set: same reasoning as zone above.
           const choices = approvedTeams
+            .filter((t) => !assignedTeams.has(t))
             .filter((t) => t.toLowerCase().includes(focused))
-            .sort((a, b) => (assignedTeams.has(a) ? 1 : 0) - (assignedTeams.has(b) ? 1 : 0))
             .slice(0, 25)
-            .map((t) => ({
-              name: assignedTeams.has(t) ? `${t} (zone ${assignedTeams.get(t)})` : t,
-              value: t,
-            }));
+            .map((t) => ({ name: t, value: t }));
           return interaction.respond(choices);
         }
 
@@ -2168,6 +2166,18 @@ client.on("interactionCreate", async (interaction) => {
       );
       if (!approvedTeams.has(team)) {
         return interaction.editReply(`"${team}" isn't an approved team for this event.`);
+      }
+
+      // Zones and teams are each one-time picks — once assigned, neither can
+      // be reassigned via /draw (no overwrite path), matching the reducing
+      // autocomplete lists below. Corrections aren't supported yet.
+      const existingAssignments = await db.getZoneAssignments(eventKey, round, DB_IS_TEST);
+      if (existingAssignments[zoneNumber]) {
+        return interaction.editReply(`Zone ${zoneNumber} is already assigned to **${existingAssignments[zoneNumber].team}**.`);
+      }
+      const teamsAlreadyAssigned = new Map(Object.entries(existingAssignments).map(([z, a]) => [a.team, z]));
+      if (teamsAlreadyAssigned.has(team)) {
+        return interaction.editReply(`**${team}** is already assigned to Zone ${teamsAlreadyAssigned.get(team)}.`);
       }
 
       await db.setZoneAssignment(eventKey, round, zoneNumber, team, interaction.user.id, DB_IS_TEST);
