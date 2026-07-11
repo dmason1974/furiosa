@@ -137,6 +137,16 @@ src/config/
   with the link can view"** — the bot fetches it as a plain CSV export, no
   OAuth/service account is set up; this is a real, easy-to-forget
   precondition (a sheet copied from another loses its sharing settings).
+  **An active (non-view-only) filter on the sheet also breaks the CSV
+  export** — confirmed 2026-07-11: a shared-and-public sheet still returned
+  HTTP 400 from Google's `/export?format=csv` endpoint while a regular
+  filter was applied to the tab; removing the filter fixed it immediately.
+  The bot surfaces this as `Couldn't fetch that sheet (HTTP 400)...` with
+  no server-side log line (it's a handled response-status check, not a
+  crash) — if that error recurs, check for an active filter before
+  assuming it's a sharing-permission problem (that fails with 401, not
+  400). A Filter *view* (as opposed to a plain Filter) is unaffected since
+  it doesn't change what other viewers/exports see.
   Zone data is intentionally decoupled from *which team* plays *which
   zone* — that "draw" is still a manual step, hand-authored into a round's
   `config.yml` (`zoneNumber` + `team: {...}`, no `homeland`/`ai` needed
