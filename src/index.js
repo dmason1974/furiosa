@@ -1111,6 +1111,29 @@ async function rejectTeam(guild, eventKey, team, reviewerId) {
   await syncRegisteredTeamsChannel(guild, eventKey);
 }
 
+// Team-ready notification content is capped at Discord's 2000-char message
+// limit, and the button handler later appends an "Approved/Rejected by ..."
+// suffix to whichever message carries the buttons — so the first chunk
+// reserves headroom for that suffix. Large rosters split across additional
+// plain follow-up messages rather than being truncated, so every registered
+// player stays visible to staff.
+const APPROVAL_SUFFIX_RESERVE = 150;
+
+function chunkRosterLines(header, lines, maxLen) {
+  const chunks = [];
+  let chunk = header;
+  for (const line of lines) {
+    if (chunk.length + 1 + line.length > maxLen) {
+      chunks.push(chunk);
+      chunk = line;
+    } else {
+      chunk += `\n${line}`;
+    }
+  }
+  chunks.push(chunk);
+  return chunks;
+}
+
 async function postTeamReadyNotification(guild, eventKey, team) {
   const catState = await db.loadCategoryState(eventKey, DB_IS_TEST);
   const channelId = catState.standingChannels?.applications?.id;
@@ -1126,9 +1149,11 @@ async function postTeamReadyNotification(guild, eventKey, team) {
   const lines = members.map(([userId, e]) =>
     e.ign ? `• <@${userId}> (IGN: ${e.ign})` : `• <@${userId}>`
   );
-  const body =
+  const header =
     `**Team "${team}" is ready for review — ${eventKey}**\n` +
-    `${members.length} player(s) registered:\n${lines.join("\n")}`;
+    `${members.length} player(s) registered:`;
+
+  const chunks = chunkRosterLines(header, lines, 2000 - APPROVAL_SUFFIX_RESERVE);
 
   const token = crypto.randomBytes(4).toString("hex");
   const row = new ActionRowBuilder().addComponents(
@@ -1136,7 +1161,10 @@ async function postTeamReadyNotification(guild, eventKey, team) {
     new ButtonBuilder().setCustomId(`reg:${eventKey}:${token}:reject`).setLabel("Reject").setStyle(ButtonStyle.Danger)
   );
 
-  const message = await channel.send({ content: body, components: [row] });
+  const message = await channel.send({ content: chunks[0], components: [row] });
+  for (const extra of chunks.slice(1)) {
+    await channel.send(`_Team "${team}" — continued:_\n${extra}`);
+  }
 
   await db.addPendingReview(eventKey, token, team, message.id, DB_IS_TEST);
 }
@@ -1292,10 +1320,13 @@ client.on("interactionCreate", async (interaction) => {
       await db.deletePendingReview(eventKey, token, DB_IS_TEST);
 
       const outcome = action === "approve" ? "✅ Approved" : "❌ Rejected";
-      return interaction.editReply({
-        content: `${interaction.message.content}\n\n${outcome} by <@${interaction.user.id}>`,
-        components: [],
-      });
+      const suffix = `\n\n${outcome} by <@${interaction.user.id}>`;
+      const original = interaction.message.content || "";
+      const maxOriginal = 2000 - suffix.length;
+      const content = original.length > maxOriginal
+        ? `${original.slice(0, maxOriginal - 1)}…${suffix}`
+        : `${original}${suffix}`;
+      return interaction.editReply({ content, components: [] });
     }
 
     if (!interaction.isChatInputCommand()) return;
