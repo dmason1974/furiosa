@@ -337,6 +337,12 @@ const registrationsCommand = new SlashCommandBuilder()
       .addStringOption((o) =>
         o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
       )
+  )
+  .addSubcommand((s) =>
+    s.setName("resync").setDescription("Rebuild #registered-teams from current data, without changing any status")
+      .addStringOption((o) =>
+        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+      )
   );
 
 const lobbyCommand = new SlashCommandBuilder()
@@ -2247,7 +2253,10 @@ client.on("interactionCreate", async (interaction) => {
         return interaction.editReply("Please run this in an event's #registration channel.");
       }
 
-      const team = interaction.options.getString("team");
+      // Lowercased so "FIRE & BLOOD" and "Fire & Blood" from different
+      // teammates land on the same team instead of silently splitting in two
+      // (this happened for real — see 2026-07-31 blood-pact incident).
+      const team = interaction.options.getString("team").trim().toLowerCase();
       const ign  = interaction.options.getString("ign");
       const now  = new Date().toISOString();
 
@@ -2359,6 +2368,11 @@ client.on("interactionCreate", async (interaction) => {
         return interaction.editReply(
           `Rejected ${player.tag} for "${eventKey}".${reason ? ` Reason: ${reason}` : ""}`
         );
+      }
+
+      if (sub === "resync") {
+        await syncRegisteredTeamsChannel(guild, eventKey);
+        return interaction.editReply(`Resynced #registered-teams for "${eventKey}".`);
       }
 
       if (sub === "export") {
