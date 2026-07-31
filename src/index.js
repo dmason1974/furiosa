@@ -1074,31 +1074,43 @@ async function syncRegisteredTeamsChannel(guild, eventKey) {
   }
   const teamNames = Object.keys(byTeam).sort((a, b) => a.localeCompare(b));
 
-  const lines = [`**Registered Teams — ${eventKey}**`, `_Last updated: ${new Date().toISOString()}_`, ""];
-  if (teamNames.length === 0) {
-    lines.push("_No teams approved yet._");
-  } else {
-    for (const team of teamNames) {
-      lines.push(`**${team}**`);
-      for (const p of byTeam[team]) {
-        lines.push(p.ign ? `• <@${p.userId}> (IGN: ${p.ign})` : `• <@${p.userId}>`);
-      }
-      lines.push("");
+  const header = `**Registered Teams — ${eventKey}**\n_Last updated: ${new Date().toISOString()}_`;
+  const teamBlocks = teamNames.length === 0
+    ? ["_No teams approved yet._"]
+    : teamNames.map((team) => {
+        const playerLines = byTeam[team].map((p) =>
+          p.ign ? `• <@${p.userId}> (IGN: ${p.ign})` : `• <@${p.userId}>`
+        );
+        return `**${team}**\n${playerLines.join("\n")}`;
+      });
+
+  // One list can now span multiple messages (a single message caps out at
+  // 2000 chars, and this event's approved-team list has already exceeded
+  // that once); a team block never gets split across two messages.
+  const chunks = chunkBlocks(header, teamBlocks, 2000, "\n\n");
+
+  const existingIds = await db.getRegisteredTeamsMessageIds(eventKey, DB_IS_TEST);
+  const newIds = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const existing = existingIds[i]
+      ? await channel.messages.fetch(existingIds[i]).catch(() => null)
+      : null;
+    if (existing) {
+      await existing.edit(chunks[i]);
+      newIds.push(existing.id);
+    } else {
+      const sent = await channel.send(chunks[i]);
+      newIds.push(sent.id);
     }
   }
-  const body = lines.join("\n").trim();
-
-  const registeredTeamsMessageId = await db.getRegisteredTeamsMessageId(eventKey, DB_IS_TEST);
-  let message = registeredTeamsMessageId
-    ? await channel.messages.fetch(registeredTeamsMessageId).catch(() => null)
-    : null;
-
-  if (message) {
-    await message.edit(body);
-  } else {
-    message = await channel.send(body);
-    await db.setRegisteredTeamsMessageId(eventKey, message.id, DB_IS_TEST);
+  // The list shrank (fewer chunks needed than last sync) — drop the
+  // now-unused trailing messages instead of leaving stale ones behind.
+  for (const staleId of existingIds.slice(chunks.length)) {
+    const staleMsg = await channel.messages.fetch(staleId).catch(() => null);
+    if (staleMsg) await staleMsg.delete().catch(() => null);
   }
+
+  await db.setRegisteredTeamsMessageIds(eventKey, newIds, DB_IS_TEST);
 }
 
 async function approveTeam(guild, eventKey, team, reviewerId) {
@@ -1111,6 +1123,25 @@ async function rejectTeam(guild, eventKey, team, reviewerId) {
   await syncRegisteredTeamsChannel(guild, eventKey);
 }
 
+// Discord messages are capped at 2000 chars. Packs `header` plus a series of
+// blocks (roster lines, per-team sections, ...) into as many messages as
+// needed rather than truncating — a block never gets split across messages.
+function chunkBlocks(header, blocks, maxLen, separator = "\n") {
+  const chunks = [];
+  let chunk = header;
+  for (const block of blocks) {
+    const candidate = chunk ? `${chunk}${separator}${block}` : block;
+    if (candidate.length > maxLen) {
+      chunks.push(chunk);
+      chunk = block;
+    } else {
+      chunk = candidate;
+    }
+  }
+  chunks.push(chunk);
+  return chunks;
+}
+
 // Team-ready notification content is capped at Discord's 2000-char message
 // limit, and the button handler later appends an "Approved/Rejected by ..."
 // suffix to whichever message carries the buttons — so the first chunk
@@ -1118,21 +1149,6 @@ async function rejectTeam(guild, eventKey, team, reviewerId) {
 // plain follow-up messages rather than being truncated, so every registered
 // player stays visible to staff.
 const APPROVAL_SUFFIX_RESERVE = 150;
-
-function chunkRosterLines(header, lines, maxLen) {
-  const chunks = [];
-  let chunk = header;
-  for (const line of lines) {
-    if (chunk.length + 1 + line.length > maxLen) {
-      chunks.push(chunk);
-      chunk = line;
-    } else {
-      chunk += `\n${line}`;
-    }
-  }
-  chunks.push(chunk);
-  return chunks;
-}
 
 async function postTeamReadyNotification(guild, eventKey, team) {
   const catState = await db.loadCategoryState(eventKey, DB_IS_TEST);
@@ -1153,7 +1169,7 @@ async function postTeamReadyNotification(guild, eventKey, team) {
     `**Team "${team}" is ready for review — ${eventKey}**\n` +
     `${members.length} player(s) registered:`;
 
-  const chunks = chunkRosterLines(header, lines, 2000 - APPROVAL_SUFFIX_RESERVE);
+  const chunks = chunkBlocks(header, lines, 2000 - APPROVAL_SUFFIX_RESERVE);
 
   const token = crypto.randomBytes(4).toString("hex");
   const row = new ActionRowBuilder().addComponents(

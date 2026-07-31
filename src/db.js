@@ -131,8 +131,8 @@ async function initSchema(isTest = false) {
     );
 
     CREATE TABLE IF NOT EXISTS event_registration_state (
-      event_key                   TEXT PRIMARY KEY,
-      registered_teams_message_id TEXT
+      event_key                    TEXT PRIMARY KEY,
+      registered_teams_message_ids JSONB NOT NULL DEFAULT '[]'
     );
 
     CREATE TABLE IF NOT EXISTS event_category_state (
@@ -191,6 +191,11 @@ async function initSchema(isTest = false) {
     ALTER TABLE event_zones_index DROP COLUMN IF EXISTS index_message_id;
     ALTER TABLE event_zones_index DROP COLUMN IF EXISTS index_message_ids;
     ALTER TABLE event_zones_index ADD COLUMN IF NOT EXISTS header_message_id TEXT;
+
+    -- Registered-teams list outgrew a single 2000-char message; now spans
+    -- as many messages as needed, tracked as an ordered array.
+    ALTER TABLE event_registration_state DROP COLUMN IF EXISTS registered_teams_message_id;
+    ALTER TABLE event_registration_state ADD COLUMN IF NOT EXISTS registered_teams_message_ids JSONB NOT NULL DEFAULT '[]';
   `);
 }
 
@@ -561,20 +566,20 @@ async function setRegistrationStatus(eventKey, playerId, status, reviewerId, isT
   return rows[0] || null;
 }
 
-async function getRegisteredTeamsMessageId(eventKey, isTest = false) {
+async function getRegisteredTeamsMessageIds(eventKey, isTest = false) {
   const { rows } = await getPool(isTest).query(
-    `SELECT registered_teams_message_id FROM event_registration_state WHERE event_key = $1`,
+    `SELECT registered_teams_message_ids FROM event_registration_state WHERE event_key = $1`,
     [eventKey]
   );
-  return rows[0]?.registered_teams_message_id || null;
+  return rows[0]?.registered_teams_message_ids || [];
 }
 
-async function setRegisteredTeamsMessageId(eventKey, messageId, isTest = false) {
+async function setRegisteredTeamsMessageIds(eventKey, messageIds, isTest = false) {
   await getPool(isTest).query(
-    `INSERT INTO event_registration_state (event_key, registered_teams_message_id)
+    `INSERT INTO event_registration_state (event_key, registered_teams_message_ids)
      VALUES ($1, $2)
-     ON CONFLICT (event_key) DO UPDATE SET registered_teams_message_id = EXCLUDED.registered_teams_message_id`,
-    [eventKey, messageId]
+     ON CONFLICT (event_key) DO UPDATE SET registered_teams_message_ids = EXCLUDED.registered_teams_message_ids`,
+    [eventKey, JSON.stringify(messageIds)]
   );
 }
 
@@ -798,7 +803,7 @@ module.exports = {
   createMatch, getPendingMatches, getMatchWithPlayers, completeMatch,
   getRegistrationEntries, upsertRegistration, deleteRegistration,
   approveTeamRegistrations, rejectTeamRegistrations, setRegistrationStatus,
-  getRegisteredTeamsMessageId, setRegisteredTeamsMessageId,
+  getRegisteredTeamsMessageIds, setRegisteredTeamsMessageIds,
   addPendingReview, getPendingReview, deletePendingReview,
   loadCategoryState, saveCategoryState, deleteCategoryState, getEventKeyForCategory,
   loadRoundState, saveRoundState, deleteRoundState, findLingeringRoundStates,
