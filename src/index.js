@@ -785,6 +785,13 @@ async function publishZonesIndex(guild, eventKey, zonesChannelId, dryrun) {
   const indexState = await db.loadZonesIndexState(eventKey, DB_IS_TEST);
   let created = 0, updated = 0;
 
+  // Optional per-event map graphic (src/config/<event>/map.png) -- a
+  // hand-authored, git-managed asset, same convention as config.yml/thread.md.
+  // Posted as its own message, graceful no-op when the file doesn't exist.
+  const mapImagePath = path.join(eventDir(eventKey), "map.png");
+  const hasMapImage = fs.existsSync(mapImagePath);
+  const isNewImageMessage = hasMapImage && !indexState.imageMessageId;
+
   if (dryrun) {
     const planLines = zoneNumbers.map((n) => {
       const existingId = indexState.zoneMessages?.[n]?.messageId;
@@ -793,33 +800,62 @@ async function publishZonesIndex(guild, eventKey, zonesChannelId, dryrun) {
     });
     const staleZones = Object.keys(indexState.zoneMessages || {}).filter((n) => !zoneNumbers.includes(n));
     for (const n of staleZones) planLines.push(`remove: Zone ${n} (no longer in latest import)`);
-    planLines.unshift(indexState.headerMessageId ? "update: header message" : "create + pin: header message (posted first)");
+    planLines.unshift(indexState.headerMessageId ? "update: header message" : "create + pin: header message");
+    if (hasMapImage) {
+      planLines.unshift(
+        indexState.imageMessageId
+          ? "update: image message"
+          : "create + pin: image message (posted first, above the header)"
+      );
+    }
     return { skipped: false, dryrun: true, planLines, created, updated, total: zoneNumbers.length };
   }
 
-  // 1. Header message first (placeholder if new), same reasoning as rules
-  //    index: stays the chronologically-earliest message in the channel.
+  // 1a. Map image first, in its own message -- Discord always renders a
+  //     message's attachments below its own text content, so getting the
+  //     image above the legend text requires two separate messages.
+  let imageMessage = indexState.imageMessageId
+    ? await zonesChannel.messages.fetch(indexState.imageMessageId).catch(() => null)
+    : null;
+  let imageMessageId = indexState.imageMessageId ?? null;
+  if (hasMapImage) {
+    const imagePayload = { files: [{ attachment: mapImagePath, name: "map.png" }] };
+    if (!imageMessage) {
+      imageMessage = await zonesChannel.send(imagePayload);
+      await imageMessage.pin().catch((e) => console.log(`Failed to pin zones image message: ${String(e?.message || e)}`));
+    } else {
+      await imageMessage.edit(imagePayload);
+    }
+    imageMessageId = imageMessage.id;
+  }
+
+  // 1b. Text header message, second so it stays below the image. If a
+  //     header from before this feature existed is still there, it predates
+  //     the (just-created) image message and would render above it --
+  //     recreate it so it lands after the image instead.
   let headerMessage = indexState.headerMessageId
     ? await zonesChannel.messages.fetch(indexState.headerMessageId).catch(() => null)
     : null;
+  if (headerMessage && isNewImageMessage) {
+    await headerMessage.unpin().catch(() => null);
+    await headerMessage.delete().catch(() => null);
+    headerMessage = null;
+  }
   const headerBody = zonesHeaderBody(zoneData.adminCountries);
-  // Optional per-event map graphic (src/config/<event>/map.png) -- a
-  // hand-authored, git-managed asset, same convention as config.yml/thread.md.
-  // Attaching is a graceful no-op when the file doesn't exist yet, same idiom
-  // as the rest of this function.
-  const mapImagePath = path.join(eventDir(eventKey), "map.png");
-  const headerFiles = fs.existsSync(mapImagePath) ? [{ attachment: mapImagePath, name: "map.png" }] : [];
-  const headerPayload = { content: headerBody, files: headerFiles };
   let headerAction;
   if (!headerMessage) {
-    headerMessage = await zonesChannel.send(headerPayload);
+    headerMessage = await zonesChannel.send(headerBody);
     await headerMessage.pin().catch((e) => console.log(`Failed to pin zones header message: ${String(e?.message || e)}`));
     headerAction = "created and pinned";
   } else {
-    await headerMessage.edit(headerPayload);
+    await headerMessage.edit(headerBody);
     headerAction = "updated";
   }
-  await db.saveZonesIndexState(eventKey, { headerMessageId: headerMessage.id, zoneMessages: indexState.zoneMessages }, DB_IS_TEST);
+  await db.saveZonesIndexState(
+    eventKey,
+    { headerMessageId: headerMessage.id, imageMessageId, zoneMessages: indexState.zoneMessages },
+    DB_IS_TEST
+  );
 
   // 2. Create/update each zone's message.
   const newZoneMessages = {};
@@ -848,7 +884,11 @@ async function publishZonesIndex(guild, eventKey, zonesChannelId, dryrun) {
 
     // Saved per-zone (not just once at the end) so a later failure doesn't
     // cause a retry to re-create zones already successfully posted.
-    await db.saveZonesIndexState(eventKey, { headerMessageId: headerMessage.id, zoneMessages: newZoneMessages }, DB_IS_TEST);
+    await db.saveZonesIndexState(
+      eventKey,
+      { headerMessageId: headerMessage.id, imageMessageId, zoneMessages: newZoneMessages },
+      DB_IS_TEST
+    );
   }
 
   // 3. Stale zones: present in the previous import's tracked messages but

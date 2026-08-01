@@ -171,6 +171,7 @@ async function initSchema(isTest = false) {
     CREATE TABLE IF NOT EXISTS event_zones_index (
       event_key         TEXT        PRIMARY KEY,
       header_message_id TEXT,
+      image_message_id  TEXT,
       zone_messages     JSONB       NOT NULL DEFAULT '{}',
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -191,6 +192,11 @@ async function initSchema(isTest = false) {
     ALTER TABLE event_zones_index DROP COLUMN IF EXISTS index_message_id;
     ALTER TABLE event_zones_index DROP COLUMN IF EXISTS index_message_ids;
     ALTER TABLE event_zones_index ADD COLUMN IF NOT EXISTS header_message_id TEXT;
+
+    -- Map graphic (src/config/<event>/map.png) now posts as its own pinned
+    -- message ahead of the text header, so it renders above the legend --
+    -- Discord always shows a message's own attachments below its content.
+    ALTER TABLE event_zones_index ADD COLUMN IF NOT EXISTS image_message_id TEXT;
 
     -- Registered-teams list outgrew a single 2000-char message; now spans
     -- as many messages as needed, tracked as an ordered array.
@@ -730,20 +736,25 @@ async function saveZoneDefinitions(eventKey, data, isTest = false) {
 
 async function loadZonesIndexState(eventKey, isTest = false) {
   const { rows } = await getPool(isTest).query(
-    `SELECT header_message_id, zone_messages FROM event_zones_index WHERE event_key = $1`,
+    `SELECT header_message_id, image_message_id, zone_messages FROM event_zones_index WHERE event_key = $1`,
     [eventKey]
   );
-  if (!rows[0]) return { headerMessageId: null, zoneMessages: {} };
-  return { headerMessageId: rows[0].header_message_id, zoneMessages: rows[0].zone_messages };
+  if (!rows[0]) return { headerMessageId: null, imageMessageId: null, zoneMessages: {} };
+  return {
+    headerMessageId: rows[0].header_message_id,
+    imageMessageId: rows[0].image_message_id,
+    zoneMessages: rows[0].zone_messages,
+  };
 }
 
 async function saveZonesIndexState(eventKey, state, isTest = false) {
   await getPool(isTest).query(
-    `INSERT INTO event_zones_index (event_key, header_message_id, zone_messages, updated_at)
-     VALUES ($1, $2, $3, NOW())
+    `INSERT INTO event_zones_index (event_key, header_message_id, image_message_id, zone_messages, updated_at)
+     VALUES ($1, $2, $3, $4, NOW())
      ON CONFLICT (event_key) DO UPDATE
-       SET header_message_id = EXCLUDED.header_message_id, zone_messages = EXCLUDED.zone_messages, updated_at = NOW()`,
-    [eventKey, state.headerMessageId ?? null, JSON.stringify(state.zoneMessages || {})]
+       SET header_message_id = EXCLUDED.header_message_id, image_message_id = EXCLUDED.image_message_id,
+           zone_messages = EXCLUDED.zone_messages, updated_at = NOW()`,
+    [eventKey, state.headerMessageId ?? null, state.imageMessageId ?? null, JSON.stringify(state.zoneMessages || {})]
   );
 }
 
