@@ -851,9 +851,26 @@ async function publishZonesIndex(guild, eventKey, zonesChannelId, dryrun) {
     await headerMessage.edit(headerBody);
     headerAction = "updated";
   }
+  // If the image message is brand new but this channel already had zone
+  // messages (posted in an earlier run, before this feature existed), those
+  // are chronologically *older* than the image/header just posted above and
+  // would still render at the top -- Discord has no message-reorder API, so
+  // the only fix is deleting and recreating them, landing them after the
+  // image+header this time. Only fires once per event, the first time its
+  // map.png shows up.
+  let priorZoneMessages = indexState.zoneMessages || {};
+  if (isNewImageMessage && Object.keys(priorZoneMessages).length > 0) {
+    for (const n of Object.keys(priorZoneMessages)) {
+      const staleId = priorZoneMessages[n]?.messageId;
+      const staleMsg = staleId ? await zonesChannel.messages.fetch(staleId).catch(() => null) : null;
+      if (staleMsg) await staleMsg.delete().catch(() => null);
+    }
+    priorZoneMessages = {};
+  }
+
   await db.saveZonesIndexState(
     eventKey,
-    { headerMessageId: headerMessage.id, imageMessageId, zoneMessages: indexState.zoneMessages },
+    { headerMessageId: headerMessage.id, imageMessageId, zoneMessages: priorZoneMessages },
     DB_IS_TEST
   );
 
@@ -861,7 +878,7 @@ async function publishZonesIndex(guild, eventKey, zonesChannelId, dryrun) {
   const newZoneMessages = {};
   for (const n of zoneNumbers) {
     const zone = zoneData.zones[n];
-    const existingId = indexState.zoneMessages?.[n]?.messageId;
+    const existingId = priorZoneMessages?.[n]?.messageId;
     const existingMsg = existingId ? await zonesChannel.messages.fetch(existingId).catch(() => null) : null;
 
     const body = [
