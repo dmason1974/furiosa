@@ -1843,7 +1843,17 @@ client.on("interactionCreate", async (interaction) => {
 
       if (!dryrun) await db.saveCategoryState(eventKey, state, DB_IS_TEST);
 
-      const rulesIndex = await publishRulesIndex(guild, eventKey, state.standingChannels?.rules?.id, dryrun);
+      // A rules-index failure (e.g. a stale definition message deleted out
+      // from under it) shouldn't block the zones index from running right
+      // after it -- isolate it rather than letting an uncaught rejection
+      // abort the rest of this handler.
+      let rulesIndex;
+      try {
+        rulesIndex = await publishRulesIndex(guild, eventKey, state.standingChannels?.rules?.id, dryrun);
+      } catch (e) {
+        console.log(`Rules index failed (continuing to zones index): ${String(e?.message || e)}`);
+        rulesIndex = { skipped: true, reason: `error: ${String(e?.message || e)}` };
+      }
       if (!rulesIndex.skipped && dryrun) {
         planLines.push("Rules index:", ...rulesIndex.planLines.map((l) => `  - ${l}`));
       }
