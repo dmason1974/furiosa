@@ -803,13 +803,20 @@ async function publishZonesIndex(guild, eventKey, zonesChannelId, dryrun) {
     ? await zonesChannel.messages.fetch(indexState.headerMessageId).catch(() => null)
     : null;
   const headerBody = zonesHeaderBody(zoneData.adminCountries);
+  // Optional per-event map graphic (src/config/<event>/map.png) -- a
+  // hand-authored, git-managed asset, same convention as config.yml/thread.md.
+  // Attaching is a graceful no-op when the file doesn't exist yet, same idiom
+  // as the rest of this function.
+  const mapImagePath = path.join(eventDir(eventKey), "map.png");
+  const headerFiles = fs.existsSync(mapImagePath) ? [{ attachment: mapImagePath, name: "map.png" }] : [];
+  const headerPayload = { content: headerBody, files: headerFiles };
   let headerAction;
   if (!headerMessage) {
-    headerMessage = await zonesChannel.send(headerBody);
+    headerMessage = await zonesChannel.send(headerPayload);
     await headerMessage.pin().catch((e) => console.log(`Failed to pin zones header message: ${String(e?.message || e)}`));
     headerAction = "created and pinned";
   } else {
-    await headerMessage.edit(headerBody);
+    await headerMessage.edit(headerPayload);
     headerAction = "updated";
   }
   await db.saveZonesIndexState(eventKey, { headerMessageId: headerMessage.id, zoneMessages: indexState.zoneMessages }, DB_IS_TEST);
