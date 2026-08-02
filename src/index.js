@@ -1118,7 +1118,7 @@ async function setupMapsFromDb(interaction, guild, eventKey, round, dryrun, temp
 
   if (!dryrun) await db.saveRoundState(eventKey, round, state, DB_IS_TEST);
   if (dryrun)
-    return interaction.editReply(`Dry-run ✅ (DB-driven zones mode, no config.yml)\n\nPlan:\n${planLines.map((l) => `• ${l}`).join("\n")}`);
+    return editReplyChunked(interaction, "Dry-run ✅ (DB-driven zones mode, no config.yml)\n\nPlan:", planLines.map((l) => `• ${l}`));
   return interaction.editReply(
     `Done ✅ (DB-driven zones mode)\nCreated: ${createdChannels} channels, ${createdThreads} threads\n` +
     `Reused: ${reusedChannels} channels, ${reusedThreads} threads`
@@ -1272,6 +1272,20 @@ async function sendChunkedTemplateMessage(thread, body, maxLen = 2000) {
   const messages = [];
   for (const chunk of chunks) messages.push(await thread.send(chunk));
   return messages;
+}
+
+// Sends a header + list of lines (e.g. a /setup dry-run plan summary) as an
+// interaction reply, splitting into multiple messages if the combined text
+// exceeds Discord's cap — a plan can run to 30+ lines for larger events
+// (e.g. blood-pact's 30 zones). First chunk via editReply (the interaction's
+// deferred reply), any remainder via ephemeral followUp, mirroring the
+// existing /ratings leaderboard chunking pattern.
+async function editReplyChunked(interaction, header, lines, maxLen = 1900) {
+  const chunks = chunkBlocks(header, lines, maxLen);
+  await interaction.editReply(chunks[0]);
+  for (const chunk of chunks.slice(1)) {
+    await interaction.followUp({ content: chunk, ephemeral: true });
+  }
 }
 
 // Team-ready notification content is capped at Discord's 2000-char message
@@ -1926,7 +1940,7 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (dryrun)
-        return interaction.editReply(`Dry-run ✅\n\nPlan:\n${planLines.map((l) => `• ${l}`).join("\n")}`);
+        return editReplyChunked(interaction, "Dry-run ✅\n\nPlan:", planLines.map((l) => `• ${l}`));
 
       const rulesIndexNote = rulesIndex.skipped
         ? `Rules index: skipped (${rulesIndex.reason}).`
@@ -2188,7 +2202,7 @@ client.on("interactionCreate", async (interaction) => {
 
       if (!dryrun) await db.saveRoundState(eventKey, round, state, DB_IS_TEST);
       if (dryrun)
-        return interaction.editReply(`Dry-run ✅\n\nPlan:\n${planLines.map((l) => `• ${l}`).join("\n")}`);
+        return editReplyChunked(interaction, "Dry-run ✅\n\nPlan:", planLines.map((l) => `• ${l}`));
       return interaction.editReply(
         `Done ✅\nCreated: ${createdChannels} channels, ${createdThreads} threads\n` +
         `Reused: ${reusedChannels} channels, ${reusedThreads} threads`
