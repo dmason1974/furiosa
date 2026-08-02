@@ -1033,7 +1033,7 @@ async function setupMapsFromDb(interaction, guild, eventKey, round, dryrun, temp
   const channelPrefix = round ? `${eventKey}-${round}` : eventKey;
   const channelName = `${channelPrefix}-map${pad2(1)}`;
   const planLines = [];
-  let createdChannels = 0, createdThreads = 0, reusedChannels = 0, reusedThreads = 0;
+  let createdChannels = 0, createdThreads = 0, reusedChannels = 0, reusedThreads = 0, skippedNoDraw = 0;
 
   planLines.push(`Map 1: channel #${channelName}`);
   let mapChannelId = state.channels?.[channelName]?.id;
@@ -1059,6 +1059,7 @@ async function setupMapsFromDb(interaction, guild, eventKey, round, dryrun, temp
     const assignedTeamName = zoneAssignments[zoneNumber]?.team;
     if (!assignedTeamName) {
       planLines.push(`  - zone ${zoneNumber}: ERROR — no /draw assignment (run /draw for this zone first)`);
+      skippedNoDraw++;
       continue;
     }
     const players = Object.entries(registrationEntries)
@@ -1121,7 +1122,10 @@ async function setupMapsFromDb(interaction, guild, eventKey, round, dryrun, temp
     return editReplyChunked(interaction, "Dry-run ✅ (DB-driven zones mode, no config.yml)\n\nPlan:", planLines.map((l) => `• ${l}`));
   return interaction.editReply(
     `Done ✅ (DB-driven zones mode)\nCreated: ${createdChannels} channels, ${createdThreads} threads\n` +
-    `Reused: ${reusedChannels} channels, ${reusedThreads} threads`
+    `Reused: ${reusedChannels} channels, ${reusedThreads} threads` +
+    (skippedNoDraw > 0
+      ? `\nSkipped (no \`/draw\` assignment yet): ${skippedNoDraw} zone(s) — run \`/draw\`, then re-run \`/setup maps\` to pick them up.`
+      : "")
   );
 }
 
