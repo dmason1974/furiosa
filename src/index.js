@@ -1099,7 +1099,7 @@ async function setupMapsFromDb(interaction, guild, eventKey, round, dryrun, temp
           SUBS_MENTIONS: "- None",
           TEAM_SIZE: String(maxTeamSize),
         });
-        await thread.send(body);
+        await sendChunkedTemplateMessage(thread, body);
         await addPlayersToThread(guild, thread, players);
         state.threads[`${channelName}:${threadName}`].posted = true;
       }
@@ -1210,6 +1210,68 @@ function chunkBlocks(header, blocks, maxLen, separator = "\n") {
   }
   chunks.push(chunk);
   return chunks;
+}
+
+// Splits a rendered thread.md body into its `---`-divided sections. Every
+// thread.md template in src/config uses a bare `---` line as a section
+// divider (blank-line spacing around it varies per file), so this is a
+// line-based split rather than a single regex over the raw string.
+function splitTemplateSections(body) {
+  const sections = [];
+  let current = [];
+  for (const line of body.split("\n")) {
+    if (/^-{3,}$/.test(line.trim())) {
+      sections.push(current.join("\n").trim());
+      current = [];
+    } else {
+      current.push(line);
+    }
+  }
+  sections.push(current.join("\n").trim());
+  return sections.filter((s) => s.length > 0);
+}
+
+// Recursively splits text on progressively finer natural boundaries
+// (newlines, e.g. a bullet list; then ", ", e.g. a comma-joined
+// ADMIN_COUNTRIES line) until every piece is ≤ maxLen. A single token still
+// longer than maxLen (not reachable with real country/mention data) is
+// truncated with an ellipsis as a last resort, matching the
+// RULES_MESSAGE_MAX_LENGTH idiom elsewhere. Recursion (rather than a single
+// split pass) matters because a section can mix a short heading line with
+// an oversized value line — a one-level split on "\n" alone would still
+// hand chunkBlocks() a block/header longer than maxLen.
+function splitToFit(text, maxLen) {
+  if (text.length <= maxLen) return [text];
+  for (const sep of ["\n", ", "]) {
+    const parts = text.split(sep);
+    if (parts.length > 1) return parts.flatMap((p) => splitToFit(p, maxLen));
+  }
+  return [text.slice(0, maxLen - 3) + "..."];
+}
+
+// Splits a single oversized section into ≤maxLen pieces (via splitToFit)
+// and repacks them with chunkBlocks() so chunkBlocks() never receives a
+// block/header already longer than maxLen.
+function subChunkOversizedSection(section, maxLen) {
+  const items = splitToFit(section, maxLen);
+  if (items.length === 1) return items;
+  return chunkBlocks(items[0], items.slice(1), maxLen, "\n");
+}
+
+// Sends a rendered thread.md body as one or more messages, packing its
+// `---`-divided sections into as many ≤maxLen messages as needed (never
+// truncating a section unless it's individually oversized — see
+// subChunkOversizedSection) rather than letting Discord reject an overlong
+// single message. Resolves only once every chunk has sent successfully.
+async function sendChunkedTemplateMessage(thread, body, maxLen = 2000) {
+  const sections = splitTemplateSections(body);
+  const normalized = sections.flatMap((s) =>
+    s.length > maxLen ? subChunkOversizedSection(s, maxLen) : [s]
+  );
+  const chunks = chunkBlocks("", normalized, maxLen, "\n---\n");
+  const messages = [];
+  for (const chunk of chunks) messages.push(await thread.send(chunk));
+  return messages;
 }
 
 // Team-ready notification content is capped at Discord's 2000-char message
@@ -1988,7 +2050,7 @@ client.on("interactionCreate", async (interaction) => {
                   PLAYERS_MENTIONS: mentionList(team.players), SUBS_MENTIONS: mentionList(team.subs) || "- None",
                   TEAM_SIZE: String(cfg.event.teamSize),
                 });
-                await thread.send(body);
+                await sendChunkedTemplateMessage(thread, body);
                 await addPlayersToThread(guild, thread, team.players);
                 await addPlayersToThread(guild, thread, team.subs);
                 state.threads[`${channelName}:${threadName}`].posted = true;
@@ -2064,7 +2126,7 @@ client.on("interactionCreate", async (interaction) => {
                 SUBS_MENTIONS: mentionList(team.subs) || "- None",
                 TEAM_SIZE: String(cfg.event.teamSize),
               });
-              await thread.send(body);
+              await sendChunkedTemplateMessage(thread, body);
               await addPlayersToThread(guild, thread, team.players);
               await addPlayersToThread(guild, thread, team.subs);
               state.threads[`${channelName}:${threadName}`].posted = true;
@@ -2106,7 +2168,7 @@ client.on("interactionCreate", async (interaction) => {
                 SUBS_MENTIONS: "- None",
                 TEAM_SIZE: String(cfg.event.teamSize),
               });
-              await thread.send(body);
+              await sendChunkedTemplateMessage(thread, body);
               await addPlayersToThread(guild, thread, playerIds);
               state.threads[`${channelName}:${threadName}`].posted = true;
             }
