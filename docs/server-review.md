@@ -1,6 +1,6 @@
 # Fury Road Server Review — New Player Experience
 
-7 November 2026 · David Mason
+7 November 2026 · steampunk74
 
 jj is right: a new player has no route from joining to playing. The rules content is good, but nothing tells newcomers how events work, where the next one is, or how to sign up. 40% of the channel links in #announcements now point at deleted channels.
 
