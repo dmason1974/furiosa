@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if page.title %}{{ page.title }}{% else %}{{ site.title | default: site.github.repository_name }}{% endif %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Serif:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #faf9f5;
+      --surface: #f0eee6;
+      --text: #141413;
+      --muted: #5e5d59;
+      --rule: #e3dfd3;
+      --accent: #c96442;
+      --accent-soft: #f3e3da;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1f1e1d;
+        --surface: #2a2927;
+        --text: #f0eee6;
+        --muted: #a8a59c;
+        --rule: #3a3936;
+        --accent: #e08a68;
+        --accent-soft: #3a2c25;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 400 17px/1.65 "IBM Plex Sans", system-ui, sans-serif;
+    }
+    main { max-width: 960px; margin: 0 auto; padding: 56px 24px 96px; }
+    h1, h2, h3 {
+      font-family: "IBM Plex Serif", Georgia, serif;
+      font-weight: 500;
+      line-height: 1.2;
+      letter-spacing: -0.01em;
+    }
+    h1 { font-size: clamp(30px, 5vw, 44px); margin: 0 0 12px; }
+    h1 + p { color: var(--muted); font-size: 15px; margin-top: 0; }
+    h1 + p + p {
+      font-family: "IBM Plex Serif", Georgia, serif;
+      font-size: 21px;
+      line-height: 1.5;
+      padding: 20px 24px;
+      border-left: 3px solid var(--accent);
+      background: var(--surface);
+      border-radius: 0 8px 8px 0;
+      margin: 32px 0 8px;
+    }
+    h2 {
+      font-size: 28px;
+      margin: 56px 0 16px;
+      padding-top: 24px;
+      border-top: 1px solid var(--rule);
+    }
+    p, li { max-width: 72ch; }
+    strong { font-weight: 600; }
+    a { color: var(--accent); text-underline-offset: 3px; }
+    code {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 0.88em;
+      background: var(--surface);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    ol, ul { padding-left: 1.4em; }
+    li { margin: 8px 0; }
+    ol li::marker { font-family: "IBM Plex Mono", monospace; color: var(--accent); }
+    .table-wrap { overflow-x: auto; margin: 24px 0; border: 1px solid var(--rule); border-radius: 10px; }
+    table { border-collapse: collapse; width: 100%; font-size: 14.5px; line-height: 1.5; }
+    th, td { text-align: left; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--rule); }
+    th {
+      font-family: "IBM Plex Mono", monospace;
+      font-weight: 500;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: var(--surface);
+    }
+    tr:last-child td { border-bottom: 0; }
+    td:first-child { font-weight: 500; white-space: nowrap; color: var(--accent); }
+    @media (max-width: 720px) {
+      body { font-size: 16px; }
+      main { padding: 32px 16px 64px; }
+      table { min-width: 720px; }
+      td:first-child { white-space: normal; }
+    }
+    ul.task-list { list-style: none; padding-left: 0; }
+    .task-list-item { display: flex; gap: 12px; align-items: baseline; }
+    .task-list-item-checkbox {
+      appearance: none;
+      flex: none;
+      width: 16px; height: 16px;
+      margin: 0;
+      border: 1.5px solid var(--accent);
+      border-radius: 4px;
+      transform: translateY(2px);
+    }
+    footer { margin-top: 72px; color: var(--muted); font-size: 13px; font-family: "IBM Plex Mono", monospace; }
+  </style>
+</head>
+<body>
+  <main>
+    {{ content | replace: '<table>', '<div class="table-wrap"><table>' | replace: '</table>', '</table></div>' }}
+    <footer>Furiosa · Fury Road</footer>
+  </main>
+</body>
+</html>
