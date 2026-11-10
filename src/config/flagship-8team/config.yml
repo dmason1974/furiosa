@@ -1,0 +1,80 @@
+# Flagship round template — 8 teams on one map: two duels in each theatre.
+# (Furiosa theatres hold exactly 2 teams, so each duel is its own theatre.)
+# Each team plays exactly the 5 countries in its pool, drafted by port tiers so
+# every team in a theatre starts with a near-equal navy. Remaining countries in
+# the ocean are AI. Port / starting-production numbers come from the WW3 4x map data.
+version: 5
+
+event:
+  key: "flagship-8team"
+  name: "Flagship Round (8 teams)"
+  round: 1
+  teamSize: 5
+
+countryPools:
+  # ⚓ Pacific — ports 21/21/20/20, production 31.0/31.2/30.7/31.3
+  red:
+    label: "Red"
+    colour: "Red"
+    playableCountries: [USA, Philippines, Venezuela, Argentina, Colombia]
+    aiCountries: &pacificAi [Afghanistan, Bolivia, Kazakhstan, Mongolia, North Korea, Pakistan]
+  orange:
+    label: "Orange"
+    colour: "Orange"
+    playableCountries: [Brazil, Russia, Myanmar, Vietnam, South Korea]
+    aiCountries: *pacificAi
+  yellow:
+    label: "Yellow"
+    colour: "Yellow"
+    playableCountries: [Indonesia, Australia, Chile, Thailand, India]
+    aiCountries: *pacificAi
+  green:
+    label: "Green"
+    colour: "Green"
+    playableCountries: [Japan, China, Canada, Peru, Mexico]
+    aiCountries: *pacificAi
+  # ⚓ Atlantic–Indian — ports 17/16/16/16, production 28.4/28.4/28.3/28.4
+  blue:
+    label: "Blue"
+    colour: "Blue"
+    playableCountries: [Sweden, Spain, Libya, Romania, Ukraine]
+    aiCountries: &atlanticAi [Austria, Belarus, Iran, Iraq, Serbia, Syria]
+  purple:
+    label: "Purple"
+    colour: "Purple"
+    playableCountries: [United Kingdom, Italy, Egypt, Algeria, Israel]
+    aiCountries: *atlanticAi
+  brown:
+    label: "Brown"
+    colour: "Brown"
+    playableCountries: [Norway, Turkey, Morocco, Ethiopia, Poland]
+    aiCountries: *atlanticAi
+  white:
+    label: "White"
+    colour: "White"
+    playableCountries: [Greece, France, Finland, Germany, Saudi Arabia]
+    aiCountries: *atlanticAi
+
+maps:
+  - mapNumber: 1
+    theatres:
+      - id: "A1"
+        name: "Pacific Theatre — Duel 1"
+        teams:
+          - { teamName: "Team Red", countryPool: red, players: [] }
+          - { teamName: "Team Orange", countryPool: orange, players: [] }
+      - id: "A2"
+        name: "Pacific Theatre — Duel 2"
+        teams:
+          - { teamName: "Team Yellow", countryPool: yellow, players: [] }
+          - { teamName: "Team Green", countryPool: green, players: [] }
+      - id: "B1"
+        name: "Atlantic–Indian Theatre — Duel 1"
+        teams:
+          - { teamName: "Team Blue", countryPool: blue, players: [] }
+          - { teamName: "Team Purple", countryPool: purple, players: [] }
+      - id: "B2"
+        name: "Atlantic–Indian Theatre — Duel 2"
+        teams:
+          - { teamName: "Team Brown", countryPool: brown, players: [] }
+          - { teamName: "Team White", countryPool: white, players: [] }

@@ -1,0 +1,57 @@
+# Flagship round template — 4 teams on one map, one duel per theatre.
+# Each team plays exactly the 5 countries in its pool, drafted by port tiers so
+# opponents start with equal navies. Remaining countries in the theatre are AI.
+# Port / starting-production numbers come from the WW3 4x map data.
+version: 5
+
+event:
+  key: "flagship-4team"
+  name: "Flagship Round (4 teams)"
+  round: 1
+  teamSize: 5
+
+countryPools:
+  # ⚓ Pacific Theatre — 27 vs 27 ports, 32.6 vs 32.7 production
+  green:
+    label: "Green"
+    colour: "Green"
+    playableCountries: [USA, Japan, Australia, China, Chile]
+    aiCountries: &pacificAi [Afghanistan, Argentina, Bolivia, Colombia, India, Kazakhstan, Mexico, Mongolia, Myanmar, North Korea, Pakistan, Peru, South Korea, Thailand, Venezuela, Vietnam]
+  orange:
+    label: "Orange"
+    colour: "Orange"
+    playableCountries: [Brazil, Indonesia, Russia, Philippines, Canada]
+    aiCountries: *pacificAi
+  # ⚓ Atlantic–Indian Theatre — 22 vs 21 ports, 28.2 vs 28.1 production
+  blue:
+    label: "Blue"
+    colour: "Blue"
+    playableCountries: [Sweden, Norway, France, Turkey, Libya]
+    aiCountries: &atlanticAi [Algeria, Austria, Belarus, Ethiopia, Finland, Germany, Iran, Iraq, Israel, Morocco, Poland, Romania, Saudi Arabia, Serbia, Syria, Ukraine]
+  purple:
+    label: "Purple"
+    colour: "Purple"
+    playableCountries: [United Kingdom, Greece, Spain, Italy, Egypt]
+    aiCountries: *atlanticAi
+
+maps:
+  - mapNumber: 1
+    theatres:
+      - id: "A"
+        name: "Pacific Theatre"
+        teams:
+          - teamName: "Team Green"
+            countryPool: green
+            players: []
+          - teamName: "Team Orange"
+            countryPool: orange
+            players: []
+      - id: "B"
+        name: "Atlantic–Indian Theatre"
+        teams:
+          - teamName: "Team Blue"
+            countryPool: blue
+            players: []
+          - teamName: "Team Purple"
+            countryPool: purple
+            players: []
