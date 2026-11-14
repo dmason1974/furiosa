@@ -46,8 +46,8 @@ The first five fix most of jj's complaint and take about an evening. None need n
 
 - [ ] Write a #start-here post, pinned at the top: what Fury Road is, how a typical event runs (announce → sign up → zone draw → truce → war), where each kind of information lives, and how to get pings.
 - [ ] Change Carl-bot's welcome message to link #start-here and #upcoming-event.
-- [ ] Hide or archive #participant-roster once each event ends.
-- [ ] Split the Fury Road x DTG post into one post per format, each with dates, team size and how to sign up.
+- [x] ~~Hide or archive #participant-roster once each event ends.~~
+- [x] ~~Split the Fury Road x DTG post into one post per format, each with dates, team size and how to sign up.~~
 - [ ] Create Discord Events for each upcoming date (starting with Fury Road x DTG, Nov 21/22), with a link in each to how to sign up. Events don't replace registration: clicking Interested is not signing up.
 
 **Next**
