@@ -10,7 +10,8 @@ Welcome to **Fury Road**. We run organised themed events on Supremacy World War 
 
 ## Where things are
 • What's on next: {{upcoming-event}}
-• Event rules: {{📚-event-rules}} · Penalties: {{⚖️-sanctions}}
+• Event rules: {{📚-event-rules}}
+• Penalties: {{⚖️-sanctions}}
 • Server rules: {{code-of-conduct}}
 • Event pings: open **Channels & Roles** at the top of the channel list to turn them on or off.
 • Help and disputes: {{🛟-support-tickets}}
