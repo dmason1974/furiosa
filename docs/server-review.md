@@ -48,7 +48,7 @@ The first five fix most of jj's complaint and take about an evening. None need n
 - [x] ~~Change Carl-bot's welcome message to link #start-here and #upcoming-event.~~ Superseded by Discord onboarding: `#start-here` is the default channel and the Server Guide links the rules. Carl-bot's greeting and autorole are switched off; removing the Carl-bot integration is still to do.
 - [x] ~~Hide or archive #participant-roster once each event ends.~~
 - [x] ~~Split the Fury Road x DTG post into one post per format, each with dates, team size and how to sign up.~~
-- [ ] Create Discord Events for each upcoming date (starting with Fury Road x DTG, Nov 21/22), with a link in each to how to sign up. Events don't replace registration: clicking Interested is not signing up.
+- [ ] Create Discord Events for each upcoming date (starting with the Capture the Flagship event), with a link in each to how to sign up. Events don't replace registration: clicking Interested is not signing up.
 
 **Next**
 
