@@ -44,8 +44,8 @@ The first five fix most of jj's complaint and take about an evening. None need n
 
 **Do first**
 
-- [ ] Write a #start-here post, pinned at the top: what Fury Road is, how a typical event runs (announce → sign up → zone draw → truce → war), where each kind of information lives, and how to get pings.
-- [ ] Change Carl-bot's welcome message to link #start-here and #upcoming-event.
+- [x] ~~Write a #start-here post, pinned at the top: what Fury Road is, how a typical event runs (announce → sign up → zone draw → truce → war), where each kind of information lives, and how to get pings.~~ Live on prod 15 Nov 2026 (`server/start-here.md`, posted by `scripts/start-here.js`).
+- [x] ~~Change Carl-bot's welcome message to link #start-here and #upcoming-event.~~ Superseded by Discord onboarding: `#start-here` is the default channel and the Server Guide links the rules. Carl-bot's greeting is still to be switched off.
 - [x] ~~Hide or archive #participant-roster once each event ends.~~
 - [x] ~~Split the Fury Road x DTG post into one post per format, each with dates, team size and how to sign up.~~
 - [ ] Create Discord Events for each upcoming date (starting with Fury Road x DTG, Nov 21/22), with a link in each to how to sign up. Events don't replace registration: clicking Interested is not signing up.
@@ -62,7 +62,7 @@ The first five fix most of jj's complaint and take about an evening. None need n
 - [ ] Merge the 14 definition channels into one #rulebook, grouped as win conditions, violations and map terms.
 - [ ] Copy-edit the definitions and clarify market blocking.
 - [ ] Rename *Thunderdome-general* and *Events*; close the leftover ticket and map channels; delete the unused "event updates" role.
-- [ ] Consider switching on Discord's built-in Onboarding (the server is already a Community server), with a question such as "Want event pings?" in place of the reaction-role post.
+- [x] ~~Consider switching on Discord's built-in Onboarding (the server is already a Community server), with a question such as "Want event pings?" in place of the reaction-role post.~~ Onboarding is on in prod with a required pings question. Still to do: retire `#pings-for-update`, the old reaction-role post and Reaction Roles once the fresh-account test passes.
 
 ## What already works
 
