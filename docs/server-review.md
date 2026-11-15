@@ -61,7 +61,7 @@ The first five fix most of jj's complaint and take about an evening. None need n
 
 - [ ] Merge the 14 definition channels into one #rulebook, grouped as win conditions, violations and map terms.
 - [ ] Copy-edit the definitions and clarify market blocking.
-- [ ] Rename *Thunderdome-general* and *Events*; close the leftover ticket and map channels; delete the unused "event updates" role.
+- [x] ~~Rename *Thunderdome-general* and *Events*; close the leftover ticket and map channels; delete the unused "event updates" role.~~ Leftover channels closed and the "event updates" role deleted. The category renames were dropped: *Thunderdome* is the name of the server's general area, not the first event, and *Events* stays.
 - [x] ~~Consider switching on Discord's built-in Onboarding (the server is already a Community server), with a question such as "Want event pings?" in place of the reaction-role post.~~ Onboarding is on in prod with a required pings question. The fresh-account test passed, and `#pings-for-update`, `#reception`, `#event discussion` and the Reaction Roles bot are gone.
 
 ## What already works
