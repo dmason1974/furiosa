@@ -116,7 +116,8 @@ async function main() {
   }
 
   // Resolve placeholders
-  const raw = fs.readFileSync(mdPath, "utf8").replace(/\s+$/, "");
+  // {{GUILD_ID}} is replaced first so it isn't treated as a channel name.
+  const raw = fs.readFileSync(mdPath, "utf8").replace(/\s+$/, "").replaceAll("{{GUILD_ID}}", guild.id);
   const names = [...new Set([...raw.matchAll(/\{\{([^}]+)\}\}/g)].map((m) => m[1]))];
   const byName = new Map(channels.map((c) => [c.name, c]));
   const missing = names.filter((n) => !byName.has(n));

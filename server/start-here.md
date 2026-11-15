@@ -13,6 +13,7 @@ Welcome to **Fury Road**. We run organised themed events on Supremacy World War 
 • Event rules: {{📚-event-rules}}
 • Penalties: {{⚖️-sanctions}}
 • Server rules: {{code-of-conduct}}
+• Event notifications: change your answer any time in [Channels & Roles](https://discord.com/channels/{{GUILD_ID}}/customize-community)
 • Help and disputes: {{🛟-support-tickets}}
 
 Questions? Ask in {{💬community-chat💬}}.
