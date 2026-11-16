@@ -235,21 +235,33 @@ src/config/
   **both** the prod and test databases at startup), so a re-run edits messages in
   place only when their text changed, and drops trailing messages if the file
   got shorter. An event with no `rules.md` is skipped; a failure here doesn't
-  block the zones index. `water-wars/rules.md` holds the format (16 teams, 6-day
-  truce, 8-hour war, last 2 flagships per ocean advance), how a round ends
-  (early at 2 flagships, otherwise tiebreak by enemy ships sunk, weighted by
-  class), the Rules of Engagement (no bombardment of cities, no invading
-  provinces, the no-go waters, ships may move in), unit and settings rules
-  carried over from Beyond Thunderdome, a Definitions & Sanctions section (links
-  the definitions page and lists, per definition, whether it is enforced for
-  this event: win-condition terms in use or not, Conspiracy/Espionage/Gold/
-  Market blocking/Restricted unit usage enforced, and the truce terms — Act of
-  war, Failing to make peace, Unjustified engagement, Flyover, Nation's
-  territory, Territorial waters — enforced during the truce only), and a "still
-  being finalised" list (tiebreaker class weights and how kills are counted,
-  declaring war on every team in the theatre, air units/missiles/coastal
-  batteries vs ships, whether flyover/territorial-waters rules apply while ships
-  sail in during the truce, sanctions for the Rules of Engagement). **Layout
+  block the zones index. `water-wars/rules.md` has five sections, **in this order (set by staff,
+  2026-11-16): Format, Win Condition, Prizes, Schedule, Rules**, and is posted
+  as five messages. Format: 16 teams of 5, round 1 = 2 maps of 8 teams, round 2
+  = 1 map of 8, final = 1 map of 4 across the whole ocean, 4 teams per ocean on
+  the round 1/2 maps. Win Condition: Capture the Flagship, last 2 flagships per
+  ocean advance, early finish at 2, and an explicit **Tiebreaker** (surviving
+  teams ranked by enemy ships sunk, weighted by ship class). Prizes: gold and SC
+  only (officers can't be a prize). Schedule: Registration, Draw, Map start
+  (truce, opens on a Sunday, 6 days), War start (the following Saturday, 8
+  hours). **Rules is deliberately one short bullet list of the event's own rules,
+  not a copy of content held elsewhere**: it links the definitions and sanctions
+  page and only says which of the 14 terms are enforced (all event: Conspiracy,
+  Espionage, Gold usage, Market blocking, Restricted unit usage; truce only: Act
+  of war, Failing to make peace, Unjustified engagement, Flyover, Nation's
+  territory, Territorial waters; not used: Homeland Supremacy, Sacred Ground), with
+  no sanction amounts. That enforcement was inferred from the definitions page and
+  staff discussion, not confirmed. **Still open (kept out of the player-facing
+  channel on purpose):** prize amounts and who is paid; registration, draw and
+  war dates and the start time; the tiebreaker's ship-class weights and how
+  kills are counted and checked, and ties on kills; whether every team must
+  declare war on every other team in its theatre at the start of war; whether
+  air units, missiles and coastal batteries may attack ships; whether the
+  flyover and territorial-waters rules apply while ships sail into their
+  theatres during the truce; sanctions for breaking the event's own rules
+  (bombarding cities, invading provinces, the flagship rules); and which
+  countries the finalists play. **Verified with mocked unit tests only; not yet
+  run on the real bot.** **Layout
   convention (2026-11-16, chosen by staff after trying wide `ansi` code blocks
   and a narrow aligned table): plain Discord markdown in the style of another
   community's event post they liked.** A `#`/`##` header with an emoji for each
