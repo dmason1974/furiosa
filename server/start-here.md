@@ -11,7 +11,7 @@ Welcome to **Fury Road**. We run organised themed events on Supremacy World War 
 ## Where things are
 • What's on next: {{upcoming-event}}
 • Event rules: {{📚-event-rules}}
-• Penalties: {{⚖️-sanctions}}
+• Definitions and sanctions: <https://dmason1974.github.io/furiosa/definitions.html>
 • Server rules: {{code-of-conduct}}
 • Event notifications: change your answer any time in [Channels & Roles](https://discord.com/channels/{{GUILD_ID}}/customize-community)
 • Help and disputes: {{🛟-support-tickets}}
