@@ -250,19 +250,19 @@ src/config/
   declaring war on every team in the theatre, air units/missiles/coastal
   batteries vs ships, whether flyover/territorial-waters rules apply while ships
   sail in during the truce, sanctions for the Rules of Engagement). **Layout
-  convention: every section is a text `##` header with its body in an
-  ```` ```ansi ```` code block underneath**, laid out wide (up to ~104 visible
-  characters per line: a desktop block is about 110 characters wide, and narrow
-  hand-wrapped lines looked cramped; a phone scrolls or wraps the long ones).
-  Bold doesn't render inside a code block, so use aligned columns and colour.
-  Colour is written as `{blue}`, `{green}`, `{red}`, `{yellow}`, `{gray}`,
-  `{pink}`, `{cyan}`, `{white}`, `{bold}` and `{/}` (reset) inside ```` ```ansi ````
-  blocks only; `renderAnsiMarkup()` turns them into real ANSI codes at post
-  time. Meaning: blue = labels, green = allowed / in use / enforced, red =
-  not allowed, yellow = a condition or open item, gray = not used. Escape codes
-  count toward the 2000-character limit. A section over the limit is split on
-  blank lines but **never inside a code fence**; a single code block that is
-  itself over the limit is an error telling you to add a `<!-- split -->`. Which definitions are
+  convention (2026-11-16, chosen by staff after trying wide `ansi` code blocks
+  and a narrow aligned table): plain Discord markdown in the style of another
+  community's event post they liked.** A `#`/`##` header with an emoji for each
+  section; bullets that start with 🔷 (information) or 🔶 (a restriction,
+  prohibition or sanction); a **bold** lead-in on each bullet; **bold** sub-
+  headings; `*italic*` notes; `➢` for a sub-point. Text wraps naturally, so there
+  is no line-width limit to manage (two earlier code-block layouts wrapped badly
+  at the window's width). Keep each `<!-- split -->` section under 2000
+  characters. A section over the limit is split on blank lines but **never inside
+  a code fence**, and a single code block over the limit is an error telling you
+  to add a `<!-- split -->`. `{blue}`-style colour tags in an ```` ```ansi ````
+  block are still supported by `renderAnsiMarkup()` if a future rules file wants
+  coloured text, but `water-wars/rules.md` no longer uses any. Which definitions are
   enforced was inferred from the definitions page and earlier staff discussion,
   not confirmed with staff. **Verified with mocked unit tests only; not yet run
   on the real bot.**
