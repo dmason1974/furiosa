@@ -125,20 +125,3 @@ Where an event prohibits something and a team breaches the rule, the breach typi
 | [Market blocking](#market-blocking) | The value of the resources used to block the market |
 | [Restricted unit usage](#restricted-unit-usage) | The units are destroyed |
 | [Unjustified engagement](#unjustified-engagement) | 1.5 × cost in each of Supplies, Components, Fuel, Electronics, Cash and Rare materials, per damaged unit |
-
-## Notes for staff (remove before publishing) {#staff-notes}
-
-**Edits from the original definitions**
-
-- Typos fixed: "boundy" → "boundary", "a paths" → "paths", "Each team choose" → "chooses", "nations territory" → "a nation's territory", stray double spaces.
-- Cross-references between Nation's territory, Flyover and Act of war are now links on this page.
-- The old **Violations** section is now **Definitions**, since a term only counts as a violation if an event's rules prohibit it. The **Flyover** example now says "counts as a flyover" rather than "a violation of airspace".
-- The **#sanctions** channel is folded into the **Sanctions** section above. Its channel links became term links, and the Gold usage breakdown moved into the table.
-- **Espionage** and **Unjustified engagement** are reworded for readability. Please confirm the meaning is unchanged.
-- The two traversal bullets are removed from **Nation's territory**, since they repeat under **Territorial waters**.
-
-**Open questions**
-
-1. **Market blocking:** what does "moved there by 0.1 steps" mean in game terms? Does "All trades must be pre-coordinated" conflict with **Conspiracy**?
-2. **Nation's territory image:** the caption is neutral. What is the red line in the screenshot showing?
-3. A one-line "what this means for you" under each term, as the server review suggested. Not written yet, as it would be guessing at intent.
