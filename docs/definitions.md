@@ -10,6 +10,33 @@ DRAFT for staff review · 16 November 2026
 
 These are the standing terms every Fury Road event uses. They define what counts as a violation and what the map terms mean. The rules for a specific event, including which of these apply and its win condition, are on that event's poster. Nothing here is final until staff sign off.
 
+## Map terms {#map-terms}
+
+### Nation's territory {#nations-territory}
+
+**A nation's territory consists of:**
+
+- Its assigned **starting land mass** (homeland cities and provinces)
+- **Territorial waters** immediately surrounding those homeland cities and provinces
+- **Airspace** above both homeland land and territorial waters
+- Any **occupied territories**
+
+![Example of a nation's territory on the coast of Angola](images/nations-territory.png)
+
+### Territorial waters {#territorial-waters}
+
+A nation's territorial waters:
+
+- begin where the nation's land meets the water
+- extend outward from each connection to the first sea-connection vertex
+- That set of vertices and the paths that connect them forms the boundary of a nation's territorial waters.
+- All nations may traverse paths that connect sea-connection vertices.
+- No nation may traverse a path that connects a sea-connection vertex directly to another nation's land.
+
+In the example, the green paths can be navigated and the red cannot.
+
+![New Zealand with navigable paths in green and blocked paths in red](images/territorial-waters.png)
+
 ## Violations {#violations}
 
 ### Act of war {#act-of-war}
@@ -74,33 +101,6 @@ The research, mobilisation, deployment, or active use of any unit type designate
 ### Unjustified engagement {#unjustified-engagement}
 
 If a country uses its units to engage another nation's or player's units during a truce, when that is not allowed, it has committed an Unjustified Engagement.
-
-## Map terms {#map-terms}
-
-### Nation's territory {#nations-territory}
-
-**A nation's territory consists of:**
-
-- Its assigned **starting land mass** (homeland cities and provinces)
-- **Territorial waters** immediately surrounding those homeland cities and provinces
-- **Airspace** above both homeland land and territorial waters
-- Any **occupied territories**
-
-![Example of a nation's territory on the coast of Angola](images/nations-territory.png)
-
-### Territorial waters {#territorial-waters}
-
-A nation's territorial waters:
-
-- begin where the nation's land meets the water
-- extend outward from each connection to the first sea-connection vertex
-- That set of vertices and the paths that connect them forms the boundary of a nation's territorial waters.
-- All nations may traverse paths that connect sea-connection vertices.
-- No nation may traverse a path that connects a sea-connection vertex directly to another nation's land.
-
-In the example, the green paths can be navigated and the red cannot.
-
-![New Zealand with navigable paths in green and blocked paths in red](images/territorial-waters.png)
 
 ## Notes for staff (remove before publishing) {#staff-notes}
 
