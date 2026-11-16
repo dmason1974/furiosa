@@ -8,36 +8,9 @@ sidebar: true
 
 DRAFT for staff review · 16 November 2026
 
-These are the standing terms every Fury Road event uses. They define what counts as a violation and what the map terms mean. The rules for a specific event, including which of these apply and its win condition, are on that event's poster. Nothing here is final until staff sign off.
+These are the standing terms every Fury Road event uses. They only define what each term means. Whether a term is allowed or prohibited is set by each event's own rules: flyovers, for example, may be allowed in one event and banned in another. Where an event does prohibit something, the sanctions at the end of this page apply. Nothing here is final until staff sign off.
 
-## Map terms {#map-terms}
-
-### Nation's territory {#nations-territory}
-
-![Example of a nation's territory on the coast of Angola](images/nations-territory.png){: .side}
-
-**A nation's territory consists of:**
-
-- Its assigned **starting land mass** (homeland cities and provinces)
-- **Territorial waters** immediately surrounding those homeland cities and provinces
-- **Airspace** above both homeland land and territorial waters
-- Any **occupied territories**
-
-### Territorial waters {#territorial-waters}
-
-![New Zealand with navigable paths in green and blocked paths in red](images/territorial-waters.png){: .side}
-
-A nation's territorial waters:
-
-- begin where the nation's land meets the water
-- extend outward from each connection to the first sea-connection vertex
-- That set of vertices and the paths that connect them forms the boundary of a nation's territorial waters.
-- All nations may traverse paths that connect sea-connection vertices.
-- No nation may traverse a path that connects a sea-connection vertex directly to another nation's land.
-
-In the example, the green paths can be navigated and the red cannot.
-
-## Violations {#violations}
+## Conduct terms {#conduct-terms}
 
 ### Act of war {#act-of-war}
 
@@ -77,7 +50,7 @@ Any country that **refuses or fails to make peace** during an active TRUCE will 
 
 A flyover is any instance where an air unit passes through, circles above, or briefly enters a nation's territory, including territorial waters.
 
-For example, this would be considered a violation of a nation's airspace, as the patrol radius overlaps another nation's territory.
+For example, this counts as a flyover, as the patrol radius overlaps another nation's territory.
 
 ### Gold usage {#gold-usage}
 
@@ -102,12 +75,60 @@ The research, mobilisation, deployment, or active use of any unit type designate
 
 If a country uses its units to engage another nation's or player's units during a truce, when that is not allowed, it has committed an Unjustified Engagement.
 
+## Map terms {#map-terms}
+
+### Nation's territory {#nations-territory}
+
+![Example of a nation's territory on the coast of Angola](images/nations-territory.png){: .side}
+
+**A nation's territory consists of:**
+
+- Its assigned **starting land mass** (homeland cities and provinces)
+- **Territorial waters** immediately surrounding those homeland cities and provinces
+- **Airspace** above both homeland land and territorial waters
+- Any **occupied territories**
+
+### Territorial waters {#territorial-waters}
+
+![New Zealand with navigable paths in green and blocked paths in red](images/territorial-waters.png){: .side}
+
+A nation's territorial waters:
+
+- begin where the nation's land meets the water
+- extend outward from each connection to the first sea-connection vertex
+- That set of vertices and the paths that connect them forms the boundary of a nation's territorial waters.
+- All nations may traverse paths that connect sea-connection vertices.
+- No nation may traverse a path that connects a sea-connection vertex directly to another nation's land.
+
+In the example, the green paths can be navigated and the red cannot.
+
+## Sanctions {#sanctions}
+
+Where an event prohibits something and a team breaches the rule, the breach typically results in an economic sanction. The table below gives the sanction for each term.
+
+- All sanctions are payable to the event moderator.
+- If a sanction cannot be paid immediately, the offending party may not conquer any territory or mobilise additional units until it is paid in full, including during any period of truce.
+- Failure or refusal to pay a sanction results in immediate disqualification.
+
+| Term | Sanction |
+| --- | --- |
+| [Act of war](#act-of-war) | 500 Electronics<br>1000 Rare materials |
+| [Conspiracy](#conspiracy) | 1000 Rare materials per team member |
+| [Espionage](#espionage) | 1000 Components<br>1000 Electronics |
+| [Failing to make peace](#failing-to-make-peace) | 1000 Supplies<br>500 Rare materials |
+| [Gold usage](#gold-usage) | Disqualification from the event unless self-reported.<br>If self-reported, the sanction depends on the use:<br>**Accelerate construction:** building level is reset to its pre-gold level<br>**Accelerate mobilisation:** the accelerated units are forfeit<br>**Accelerate research:** economic fine of the research cost<br>**Healing units:** the healed units are forfeit<br>**Resource purchase:** the resources are sold to the moderator, with no cash benefit |
+| [Market blocking](#market-blocking) | The value of the resources used to block the market |
+| [Restricted unit usage](#restricted-unit-usage) | The units are destroyed |
+| [Unjustified engagement](#unjustified-engagement) | 1.5 × cost in each of Supplies, Components, Fuel, Electronics, Cash and Rare materials, per damaged unit |
+
 ## Notes for staff (remove before publishing) {#staff-notes}
 
 **Edits from the original definitions**
 
 - Typos fixed: "boundy" → "boundary", "a paths" → "paths", "Each team choose" → "chooses", "nations territory" → "a nation's territory", stray double spaces.
 - Cross-references between Nation's territory, Flyover and Act of war are now links on this page.
+- The old **Violations** section is now **Conduct terms**, since a term only counts as a violation if an event's rules prohibit it. The **Flyover** example now says "counts as a flyover" rather than "a violation of airspace".
+- The **#sanctions** channel is folded into the **Sanctions** section above. Its channel links became term links, and the Gold usage breakdown moved into the table.
 - **Espionage** and **Unjustified engagement** are reworded for readability. Please confirm the meaning is unchanged.
 - The two traversal bullets are removed from **Nation's territory**, since they repeat under **Territorial waters**.
 
@@ -116,4 +137,5 @@ If a country uses its units to engage another nation's or player's units during 
 1. **Market blocking:** what does "moved there by 0.1 steps" mean in game terms? Does "All trades must be pre-coordinated" conflict with **Conspiracy**?
 2. **Grouping:** **Flyover** and **Act of war** are really about territory. Move them next to the Map terms?
 3. **Images:** the three screenshots come from the original definition channels. Check they still make sense, and caption **Nation's territory** properly (what is the red line showing?).
-4. A one-line "what this means for you" under each term, as the server review suggested. Not written yet, as it would be guessing at intent.
+4. **Sanctions:** **Flyover** has no sanction of its own in #sanctions. Is it covered by **Act of war**? Also confirm the resource names: I read the emoji "comps" as Components and "rare" as Rare materials.
+5. A one-line "what this means for you" under each term, as the server review suggested. Not written yet, as it would be guessing at intent.
