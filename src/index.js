@@ -1199,6 +1199,12 @@ async function setupMapsFromDb(interaction, guild, eventKey, round, dryrun, temp
 // ---------------------------
 // Registrations
 // ---------------------------
+// Natural order for team names, so team2 sorts before team10 (a plain
+// localeCompare puts team10-team16 ahead of team2).
+function compareTeamNames(a, b) {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
 async function syncRegisteredTeamsChannel(guild, eventKey) {
   const catState = await db.loadCategoryState(eventKey, DB_IS_TEST);
   const channelInfo = catState.standingChannels?.["registered-teams"];
@@ -1213,7 +1219,7 @@ async function syncRegisteredTeamsChannel(guild, eventKey) {
   for (const [userId, entry] of approved) {
     (byTeam[entry.team] ||= []).push({ userId, ign: entry.ign });
   }
-  const teamNames = Object.keys(byTeam).sort((a, b) => a.localeCompare(b));
+  const teamNames = Object.keys(byTeam).sort(compareTeamNames);
 
   const header = `**Registered Teams — ${eventKey}**\n_Last updated: ${new Date().toISOString()}_`;
   const teamBlocks = teamNames.length === 0
@@ -2689,7 +2695,7 @@ const handleInteraction = async (interaction) => {
         for (const [userId, e] of Object.entries(entries)) {
           (byTeam[e.team] ||= []).push({ userId, ...e });
         }
-        const teamNames = Object.keys(byTeam).sort((a, b) => a.localeCompare(b));
+        const teamNames = Object.keys(byTeam).sort(compareTeamNames);
         if (teamNames.length === 0) return interaction.editReply(`No registrations for "${eventKey}" yet.`);
         // Split across messages: 16 teams of 5 is well over Discord's 2000-char
         // limit (an oversized reply here used to crash the whole bot).
@@ -2745,7 +2751,7 @@ const handleInteraction = async (interaction) => {
         for (const [userId, e] of approved) {
           (byTeam[e.team] ||= []).push({ userId, ign: e.ign });
         }
-        const teamNames = Object.keys(byTeam).sort((a, b) => a.localeCompare(b));
+        const teamNames = Object.keys(byTeam).sort(compareTeamNames);
         if (teamNames.length === 0) return interaction.editReply(`No approved teams for "${eventKey}" yet.`);
         const yamlLines = teamNames.map((team) => {
           const players = byTeam[team]
