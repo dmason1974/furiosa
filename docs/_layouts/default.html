@@ -57,7 +57,8 @@
       margin: 32px 0 8px;
     }
     /* Opt out of the pull-quote look: add {: .plain} under the paragraph. */
-    h1 + p + p.plain {
+    h1 + p.plain, h1 + p + p.plain {
+      color: var(--text);
       font-family: inherit;
       font-size: inherit;
       line-height: inherit;
