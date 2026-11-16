@@ -798,6 +798,70 @@ function zonesHeaderBody(adminCountries) {
 // missing-"definitions"-category skip. One message per zone (Homeland
 // first, then AI, matching the reference channel), preceded by a pinned
 // legend/admin-countries header — no links index.
+// ---------------------------
+// Per-event rules (src/config/<event>/rules.md -> #rules)
+// ---------------------------
+// Event-specific rules live in git next to the event's config, like thread.md.
+// A line containing only `<!-- split -->` starts a new Discord message, and a
+// section longer than Discord's 2000-char limit is split further on blank
+// lines. /setup event posts them after the definitions index and tracks the
+// message IDs, so a re-run edits in place (only when the text changed) instead
+// of reposting.
+function splitRulesMarkdown(text, maxLen = 1900) {
+  const sections = text.split(/^[ \t]*<!--\s*split\s*-->[ \t]*$/m).map((s) => s.trim()).filter(Boolean);
+  const out = [];
+  for (const section of sections) {
+    if (section.length <= maxLen) { out.push(section); continue; }
+    for (const chunk of chunkBlocks("", section.split(/\n{2,}/), maxLen, "\n\n").filter(Boolean)) {
+      if (chunk.length <= 2000) { out.push(chunk); continue; }
+      // a single block over the limit: fall back to splitting it on lines
+      out.push(...chunkBlocks("", chunk.split("\n"), maxLen, "\n").filter(Boolean));
+    }
+  }
+  return out;
+}
+
+async function publishEventRules(guild, eventKey, rulesChannelId, dryrun) {
+  const rulesPath = path.join(eventDir(eventKey), "rules.md");
+  if (!fs.existsSync(rulesPath)) return { skipped: true, reason: "no rules.md in this event's config folder" };
+  if (!rulesChannelId) return { skipped: true, reason: "#rules channel doesn't exist yet" };
+  const channel = await guild.channels.fetch(rulesChannelId).catch(() => null);
+  if (!channel) return { skipped: true, reason: "#rules channel could not be fetched" };
+
+  const messages = splitRulesMarkdown(readText(rulesPath));
+  const existingIds = await db.getEventRulesMessageIds(eventKey, DB_IS_TEST);
+
+  if (dryrun) {
+    return {
+      total: messages.length, created: 0, updated: 0, unchanged: 0,
+      planLines: messages.map((m, i) =>
+        `${existingIds[i] ? "update" : "create"} rules message ${i + 1}/${messages.length} (${m.length} chars)`),
+    };
+  }
+
+  let created = 0, updated = 0, unchanged = 0;
+  const newIds = [];
+  for (let i = 0; i < messages.length; i++) {
+    const existing = existingIds[i] ? await channel.messages.fetch(existingIds[i]).catch(() => null) : null;
+    if (existing) {
+      if (existing.content === messages[i]) unchanged++;
+      else { await existing.edit(messages[i]); updated++; }
+      newIds.push(existing.id);
+    } else {
+      const sent = await channel.send(messages[i]);
+      newIds.push(sent.id);
+      created++;
+    }
+  }
+  // rules.md got shorter: drop the now-unused trailing messages
+  for (const staleId of existingIds.slice(messages.length)) {
+    const staleMsg = await channel.messages.fetch(staleId).catch(() => null);
+    if (staleMsg) await staleMsg.delete().catch(() => null);
+  }
+  await db.setEventRulesMessageIds(eventKey, newIds, DB_IS_TEST);
+  return { total: messages.length, created, updated, unchanged };
+}
+
 async function publishZonesIndex(guild, eventKey, zonesChannelId, dryrun) {
   const zoneData = await db.getZoneDefinitions(eventKey, DB_IS_TEST);
   if (!zoneData || !zoneData.zones || Object.keys(zoneData.zones).length === 0) {
@@ -1097,8 +1161,12 @@ async function setupMapsFromDb(interaction, guild, eventKey, round, dryrun, temp
   const maxTeamSize = categoryState.maxTeamSize ?? 5;
 
   const state = await db.loadRoundState(eventKey, round, DB_IS_TEST);
-  const channelPrefix = round ? `${eventKey}-${round}` : eventKey;
-  const channelName = `${channelPrefix}-map${pad2(1)}`;
+  // A round folder named like "r1-map2" means "map 2 of round r1", so name the
+  // channel <event>-r1-map02, not <event>-r1-map2-map01 (the map number would
+  // appear twice). Any other round key keeps <event>-<round>-map01.
+  const mapRound = round ? round.match(/^(.*)-map(\d+)$/i) : null;
+  const channelPrefix = mapRound ? `${eventKey}-${mapRound[1]}` : round ? `${eventKey}-${round}` : eventKey;
+  const channelName = `${channelPrefix}-map${pad2(mapRound ? Number(mapRound[2]) : 1)}`;
   const planLines = [];
   let createdChannels = 0, createdThreads = 0, reusedChannels = 0, reusedThreads = 0, skippedNoDraw = 0;
 
@@ -2016,6 +2084,18 @@ const handleInteraction = async (interaction) => {
         planLines.push("Rules index:", ...rulesIndex.planLines.map((l) => `  - ${l}`));
       }
 
+      // Event-specific rules (src/config/<event>/rules.md), isolated the same way.
+      let eventRules;
+      try {
+        eventRules = await publishEventRules(guild, eventKey, state.standingChannels?.rules?.id, dryrun);
+      } catch (e) {
+        console.log(`Event rules failed (continuing): ${String(e?.message || e)}`);
+        eventRules = { skipped: true, reason: `error: ${String(e?.message || e)}` };
+      }
+      if (!eventRules.skipped && dryrun) {
+        planLines.push("Event rules:", ...eventRules.planLines.map((l) => `  - ${l}`));
+      }
+
       const zonesIndex = await publishZonesIndex(guild, eventKey, state.standingChannels?.zones?.id, dryrun);
       if (!zonesIndex.skipped && dryrun) {
         planLines.push("Zones index:", ...zonesIndex.planLines.map((l) => `  - ${l}`));
@@ -2028,6 +2108,10 @@ const handleInteraction = async (interaction) => {
         ? `Rules index: skipped (${rulesIndex.reason}).`
         : `Rules index: ${rulesIndex.total} definition(s) — created ${rulesIndex.created}, updated ${rulesIndex.updated} (index ${rulesIndex.indexAction}).`;
 
+      const eventRulesNote = eventRules.skipped
+        ? `Event rules: skipped (${eventRules.reason}).`
+        : `Event rules: ${eventRules.total} message(s) — created ${eventRules.created}, updated ${eventRules.updated}, unchanged ${eventRules.unchanged}.`;
+
       const zonesIndexNote = zonesIndex.skipped
         ? `Zones index: skipped (${zonesIndex.reason}).`
         : `Zones index: ${zonesIndex.total} zone(s) — created ${zonesIndex.created}, updated ${zonesIndex.updated} (index ${zonesIndex.indexAction}).`;
@@ -2035,7 +2119,7 @@ const handleInteraction = async (interaction) => {
       return interaction.editReply(
         `Done ✅\nCategory "${categoryName}" ready. Max team size: ${state.maxTeamSize}.\n` +
         `Standing channels — created: ${createdStanding}, reused: ${reusedStanding}\n` +
-        `${rulesIndexNote}\n${zonesIndexNote}`
+        `${rulesIndexNote}\n${eventRulesNote}\n${zonesIndexNote}`
       );
     }
 

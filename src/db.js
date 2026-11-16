@@ -159,6 +159,8 @@ async function initSchema(isTest = false) {
       definitions      JSONB       NOT NULL DEFAULT '{}',
       updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    -- Message IDs of the per-event rules.md posts in #rules (see publishEventRules).
+    ALTER TABLE event_rules_index ADD COLUMN IF NOT EXISTS event_rules_message_ids JSONB NOT NULL DEFAULT '[]';
 
     CREATE TABLE IF NOT EXISTS event_zone_definitions (
       event_key        TEXT        PRIMARY KEY,
@@ -707,6 +709,26 @@ async function saveRulesIndexState(eventKey, state, isTest = false) {
   );
 }
 
+// Per-event rules.md posts in #rules (kept separate from the definitions index
+// above, which owns index_message_id/definitions for the same event row).
+async function getEventRulesMessageIds(eventKey, isTest = false) {
+  const { rows } = await getPool(isTest).query(
+    `SELECT event_rules_message_ids FROM event_rules_index WHERE event_key = $1`,
+    [eventKey]
+  );
+  return rows[0]?.event_rules_message_ids || [];
+}
+
+async function setEventRulesMessageIds(eventKey, messageIds, isTest = false) {
+  await getPool(isTest).query(
+    `INSERT INTO event_rules_index (event_key, event_rules_message_ids, updated_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (event_key) DO UPDATE
+       SET event_rules_message_ids = EXCLUDED.event_rules_message_ids, updated_at = NOW()`,
+    [eventKey, JSON.stringify(messageIds)]
+  );
+}
+
 // ---------------------------
 // Zone definitions (imported from a staff Google Sheet)
 // ---------------------------
@@ -818,7 +840,7 @@ module.exports = {
   addPendingReview, getPendingReview, deletePendingReview,
   loadCategoryState, saveCategoryState, deleteCategoryState, getEventKeyForCategory,
   loadRoundState, saveRoundState, deleteRoundState, findLingeringRoundStates,
-  loadRulesIndexState, saveRulesIndexState,
+  loadRulesIndexState, saveRulesIndexState, getEventRulesMessageIds, setEventRulesMessageIds,
   getZoneDefinitions, saveZoneDefinitions, loadZonesIndexState, saveZonesIndexState,
   getZoneAssignments, setZoneAssignment,
 };

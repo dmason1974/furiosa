@@ -193,7 +193,12 @@ src/config/
   Indo-Atlantic, port-drafted as in `flagship-8team`), teams come from approved
   `/registrations`, and who plays which zone comes from the draw sheet
   (`/setup draw`, below). Round 1 is two map channels because the DB path makes
-  exactly one per round key. `r3-final` still has a hand-authored `config.yml`
+  exactly one per round key. **Channel naming (2026-11-16)**: a round key like
+  `r1-map2` means "map 2 of round r1" and gives `<event>-r1-map02` (not
+  `<event>-r1-map2-map01`); any other key keeps `<event>-<round>-map01` (`r2` gives
+  `water-wars-r2-map01`). Channels made under the old name must be torn down with
+  `/teardown maps` before re-running `/setup maps`, or both sets will exist.
+  `r3-final` still has a hand-authored `config.yml`
   (one 4-team theatre, no ocean split) and its pools are empty on purpose:
   **which countries each finalist plays is not decided**. **While testing, all
   22 non-pool, non-admin countries are AI and non-conquerable**, so the zones
@@ -220,6 +225,31 @@ src/config/
   `/setup maps` reads it unchanged. **Verified with mocked unit tests only
   (new draw, re-run, swap, blank sheet, six error cases); not yet run against
   the real bot and Discord.**
+- **Per-event rules, `src/config/<event>/rules.md` (2026-11-16, part of
+  `/setup event`)**: event-specific rules live in git next to the event's
+  config and are posted into that event's `#rules` after the definitions index.
+  A line with only `<!-- split -->` starts a new Discord message, and a section
+  over Discord's 2000-char limit is split further on blank lines (then on
+  lines). Message IDs are stored in the new `event_rules_index.event_rules_message_ids`
+  column (added by `ADD COLUMN IF NOT EXISTS` in `initSchema`, which runs on
+  **both** the prod and test databases at startup), so a re-run edits messages in
+  place only when their text changed, and drops trailing messages if the file
+  got shorter. An event with no `rules.md` is skipped; a failure here doesn't
+  block the zones index. `water-wars/rules.md` holds the format (16 teams, 6-day
+  truce, 8-hour war, last 2 flagships per ocean advance), how a round ends
+  (early at 2 flagships, otherwise tiebreak by enemy ships sunk, weighted by
+  class), the Rules of Engagement (no bombardment of cities, no invading
+  provinces, the no-go waters, ships may move in), unit and settings rules
+  carried over from Beyond Thunderdome, and a "still being finalised" list
+  (tiebreaker class weights and how kills are counted, declaring war on every
+  team in the theatre, air units/missiles/coastal batteries vs ships, penalties).
+  **Verified with mocked unit tests only; not yet run on the real bot.**
+- **Event map graphic, `src/config/<event>/map.png`**: posted into `#zones` by
+  `/setup zones` / `/setup event` (see `publishZonesIndex`). `water-wars/map.png`
+  is the naval theatre map (Pacific 60°N, Indo-Atlantic 70°N, split at 80°E, south
+  limit 56°S, with the Caspian, Black Sea and Great Lakes marked). It does not yet
+  mark the Baltic, Persian Gulf and Red Sea, which `rules.md` also lists as no-go
+  waters.
 - **Registrations-driven team threads (2026-07-05)**: a map entry's `zones`/
   `theatres` array can instead be `teams: "registrations"` — `/setup maps`
   then creates one private thread per **approved** `registrations` team
