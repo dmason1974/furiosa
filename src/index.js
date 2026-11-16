@@ -763,9 +763,19 @@ async function publishRulesIndex(guild, eventKey, rulesChannelId, dryrun) {
 // ---------------------------
 // Zones index (event_zone_definitions -> #zones)
 // ---------------------------
-function countryBlock(fence, countries) {
-  const body = (countries || []).map((c) => ` ${c}`).join("\n") || " (none)";
-  return `\`\`\`${fence}\n${body}\n\`\`\``;
+// Colour in Discord posts: use ```ansi blocks with explicit colour codes, so the
+// colour is chosen by the bot and doesn't depend on Discord guessing a language
+// (a ```fix block rendered as plain white text, 2026-11-16). Blue = homeland,
+// green = conquerable AI, red = admin / not allowed. Desktop renders the colours;
+// mobile may show plain text. Use this for any coloured text in a bot post.
+const ANSI = { blue: "\u001b[0;34m", green: "\u001b[0;32m", red: "\u001b[0;31m", reset: "\u001b[0m" };
+function ansiBlock(color, lines) {
+  const body = (lines && lines.length ? lines : [" (none)"]).map((l) => `${ANSI[color]}${l}${ANSI.reset}`).join("\n");
+  return `\`\`\`ansi\n${body}\n\`\`\``;
+}
+
+function countryBlock(color, countries) {
+  return ansiBlock(color, (countries || []).map((c) => ` ${c}`));
 }
 
 // Matches the wording/formatting of the original hand-written #map-zones
@@ -773,19 +783,13 @@ function countryBlock(fence, countries) {
 // session) — dynamic only in the admin countries list, which comes from
 // whatever was imported for this event rather than being hardcoded.
 function zonesHeaderBody(adminCountries) {
-  const adminLines = (adminCountries || []).map((c) => `- ${c}`).join("\n") || "- (none)";
+  const adminLines = (adminCountries || []).map((c) => `- ${c}`);
   return [
     "# 🌐 Map Division",
-    "```fix",
-    "Blue denotes Homeland playable",
-    "```",
-    "```yaml",
-    "Green denotes conquerable AI",
-    "```",
+    ansiBlock("blue", ["Blue denotes Homeland playable"]),
+    ansiBlock("green", ["Green denotes conquerable AI"]),
     "The following countries are Admin countries",
-    "```diff",
-    adminLines,
-    "```",
+    ansiBlock("red", adminLines.length ? adminLines : ["- (none)"]),
     "",
     "Countries that are not denoted as homeland or conquerable AI are not to be captured during truce.",
   ].join("\n");
@@ -975,9 +979,9 @@ async function publishZonesIndex(guild, eventKey, zonesChannelId, dryrun) {
     const body = [
       `## Zone ${n}`,
       "### Homeland",
-      countryBlock("fix", zone.homeland),
+      countryBlock("blue", zone.homeland),
       "### AI",
-      countryBlock("yaml", zone.ai),
+      countryBlock("green", zone.ai),
     ].join("\n");
 
     if (existingMsg) {

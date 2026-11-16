@@ -402,6 +402,15 @@ src/config/
   a piece of state is both "the ID to look up next time" and "a flag that
   guards a one-time side effect," never blindly overwrite the whole object
   on the lookup path — always merge.
+- **Coloured text in bot posts: always use ```` ```ansi ```` blocks with explicit
+  colour codes (the `ansiBlock()` / `ANSI` helpers in `src/index.js`), never a
+  language guess.** The `#zones` legend and Homeland lists used to be ```` ```fix ````
+  blocks and, on 2026-11-16, rendered as plain white text on the test server (the
+  `yaml` AI block and `diff` admin block did colour, but only because Discord
+  happened to highlight them). Convention: blue = homeland, green = conquerable
+  AI, red = admin or not allowed. Desktop shows the colours; mobile may show plain
+  text. Each line adds about 11 characters of escape codes toward Discord's
+  2000-char limit.
 - Map channel intro messages (`/setup maps`, both the `config.yml`-driven
   and DB-driven paths) are now pinned after sending, same reasoning as the
   zones-index header message and the rules-index message — the
