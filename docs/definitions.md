@@ -1,16 +1,17 @@
 ---
 layout: default
-title: Fury Road Definitions
+title: Fury Road Definitions & Sanctions
 sidebar: true
 ---
 
-# Fury Road Definitions
+# Fury Road Definitions & Sanctions
 
 DRAFT for staff review · 16 November 2026
 
-These are the standing terms every Fury Road event uses. They only define what each term means. Whether a term is allowed or prohibited is set by each event's own rules: flyovers, for example, may be allowed in one event and banned in another. Where an event does prohibit something, the sanctions at the end of this page apply. Nothing here is final until staff sign off.
+This page sets out the global definitions used in running events on the Fury Road server, and the sanctions that apply where an individual event's rules enforce them.
+{: .plain}
 
-## Conduct terms {#conduct-terms}
+## Definitions {#definitions}
 
 ### Act of war {#act-of-war}
 
@@ -116,6 +117,7 @@ Where an event prohibits something and a team breaches the rule, the breach typi
 | [Conspiracy](#conspiracy) | 1000 Rare materials per team member |
 | [Espionage](#espionage) | 1000 Components<br>1000 Electronics |
 | [Failing to make peace](#failing-to-make-peace) | 1000 Supplies<br>500 Rare materials |
+| [Flyover](#flyover) | A flyover is an [act of war](#act-of-war), so the same sanction applies:<br>500 Electronics<br>1000 Rare materials |
 | [Gold usage](#gold-usage) | Disqualification from the event unless self-reported.<br>If self-reported, the sanction depends on the use:<br>**Accelerate construction:** building level is reset to its pre-gold level<br>**Accelerate mobilisation:** the accelerated units are forfeit<br>**Accelerate research:** economic fine of the research cost<br>**Healing units:** the healed units are forfeit<br>**Resource purchase:** the resources are sold to the moderator, with no cash benefit |
 | [Market blocking](#market-blocking) | The value of the resources used to block the market |
 | [Restricted unit usage](#restricted-unit-usage) | The units are destroyed |
@@ -127,7 +129,7 @@ Where an event prohibits something and a team breaches the rule, the breach typi
 
 - Typos fixed: "boundy" → "boundary", "a paths" → "paths", "Each team choose" → "chooses", "nations territory" → "a nation's territory", stray double spaces.
 - Cross-references between Nation's territory, Flyover and Act of war are now links on this page.
-- The old **Violations** section is now **Conduct terms**, since a term only counts as a violation if an event's rules prohibit it. The **Flyover** example now says "counts as a flyover" rather than "a violation of airspace".
+- The old **Violations** section is now **Definitions**, since a term only counts as a violation if an event's rules prohibit it. The **Flyover** example now says "counts as a flyover" rather than "a violation of airspace".
 - The **#sanctions** channel is folded into the **Sanctions** section above. Its channel links became term links, and the Gold usage breakdown moved into the table.
 - **Espionage** and **Unjustified engagement** are reworded for readability. Please confirm the meaning is unchanged.
 - The two traversal bullets are removed from **Nation's territory**, since they repeat under **Territorial waters**.
@@ -135,7 +137,5 @@ Where an event prohibits something and a team breaches the rule, the breach typi
 **Open questions**
 
 1. **Market blocking:** what does "moved there by 0.1 steps" mean in game terms? Does "All trades must be pre-coordinated" conflict with **Conspiracy**?
-2. **Grouping:** **Flyover** and **Act of war** are really about territory. Move them next to the Map terms?
-3. **Images:** the three screenshots come from the original definition channels. Check they still make sense, and caption **Nation's territory** properly (what is the red line showing?).
-4. **Sanctions:** **Flyover** has no sanction of its own in #sanctions. Is it covered by **Act of war**? Also confirm the resource names: I read the emoji "comps" as Components and "rare" as Rare materials.
-5. A one-line "what this means for you" under each term, as the server review suggested. Not written yet, as it would be guessing at intent.
+2. **Nation's territory image:** the caption is neutral. What is the red line in the screenshot showing?
+3. A one-line "what this means for you" under each term, as the server review suggested. Not written yet, as it would be guessing at intent.
