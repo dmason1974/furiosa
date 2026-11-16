@@ -11,48 +11,50 @@ event:
 
 countryPools:
   # Port-drafted pools reused from flagship-8team: each team in an ocean plays its own 5 countries.
+  # TESTING: all 22 non-pool, non-admin countries are AI and NON-conquerable, so every aiCountries list is
+  # empty on purpose. (Earlier drafts listed 12 as conquerable AI, and the 10 Sub-Saharan countries were unlisted.)
   # Pacific ocean pools (ports 21 / 21 / 20 / 20)
   red:
     label: "Red"
     colour: "Red"
     playableCountries: [USA, Philippines, Venezuela, Argentina, Colombia]
-    aiCountries: &pacificAi [Afghanistan, Bolivia, Kazakhstan, Mongolia, North Korea, Pakistan]
+    aiCountries: []
   orange:
     label: "Orange"
     colour: "Orange"
     playableCountries: [Brazil, Russia, Myanmar, Vietnam, South Korea]
-    aiCountries: *pacificAi
+    aiCountries: []
   yellow:
     label: "Yellow"
     colour: "Yellow"
     playableCountries: [Indonesia, Australia, Chile, Thailand, India]
-    aiCountries: *pacificAi
+    aiCountries: []
   green:
     label: "Green"
     colour: "Green"
     playableCountries: [Japan, China, Canada, Peru, Mexico]
-    aiCountries: *pacificAi
+    aiCountries: []
   # Indo-Atlantic ocean pools (ports 17 / 16 / 16 / 16)
   blue:
     label: "Blue"
     colour: "Blue"
     playableCountries: [Sweden, Spain, Libya, Romania, Ukraine]
-    aiCountries: &atlanticAi [Austria, Belarus, Iran, Iraq, Serbia, Syria]
+    aiCountries: []
   purple:
     label: "Purple"
     colour: "Purple"
     playableCountries: [United Kingdom, Italy, Egypt, Algeria, Israel]
-    aiCountries: *atlanticAi
+    aiCountries: []
   brown:
     label: "Brown"
     colour: "Brown"
     playableCountries: [Norway, Turkey, Morocco, Ethiopia, Poland]
-    aiCountries: *atlanticAi
+    aiCountries: []
   white:
     label: "White"
     colour: "White"
     playableCountries: [Greece, France, Finland, Germany, Saudi Arabia]
-    aiCountries: *atlanticAi
+    aiCountries: []
 
 maps:
   - mapNumber: 3

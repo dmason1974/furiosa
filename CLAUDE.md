@@ -141,6 +141,11 @@ src/config/
   with the link can view"** — the bot fetches it as a plain CSV export, no
   OAuth/service account is set up; this is a real, easy-to-forget
   precondition (a sheet copied from another loses its sharing settings).
+  **Keep it to one tab (2026-11-16).** A zones sheet is one tab with just the
+  `Country`/`Type`/`Zone` columns, and any link to it works — with no `gid` in
+  the link the bot exports the first tab. (It used to default to `gid=0`,
+  which returns HTTP 400 for a sheet made by uploading a CSV, since that
+  first tab has a random gid.) Only add a `gid` if a sheet ever has several tabs.
   **An active (non-view-only) filter on the sheet also breaks the CSV
   export** — confirmed 2026-07-11: a shared-and-public sheet still returned
   HTTP 400 from Google's `/export?format=csv` endpoint while a regular
@@ -182,7 +187,10 @@ src/config/
   dirs `r1-ffa` = 2 maps, `r2-ffa` = 1 map, `r3-final` = 1 map): each ocean is a
   4-team free-for-all and the last 2 flagships per ocean advance; the final is
   one map, one theatre, whole ocean, last flagship wins. The 8 pools are the
-  port-drafted ones from `flagship-8team`. R1 teams are placed by a live draw
+  port-drafted ones from `flagship-8team`. **While testing, all 22 non-pool,
+  non-admin countries are AI and non-conquerable, so every pool's `aiCountries`
+  is empty** (12 were listed as conquerable AI in earlier drafts, and the 10
+  Sub-Saharan countries were never listed). R1 teams are placed by a live draw
   and **hand-authored** into `config.yml` afterwards (no bot draw command for
   this). Team names and players in the committed configs are placeholders, and
   the final's pools are empty on purpose: **which countries each finalist

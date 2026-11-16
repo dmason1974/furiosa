@@ -941,12 +941,16 @@ async function publishZonesIndex(guild, eventKey, zonesChannelId, dryrun) {
 
 // Builds a Google Sheets CSV-export URL from any share-link form of the
 // same doc (edit link, view link, with or without a gid for a specific tab).
+// Convention: a zones sheet has ONE tab. With no gid in the link we leave the
+// parameter out and Google exports the first tab. (Defaulting to gid=0 was
+// wrong: a sheet created by uploading a CSV has a random first-tab gid, and
+// asking for gid=0 returns HTTP 400.) A link with a gid still picks that tab.
 function sheetCsvExportUrl(sheetUrl) {
   const idMatch = sheetUrl.match(/\/spreadsheets\/d\/([\w-]+)/);
   if (!idMatch) throw new Error("Couldn't find a spreadsheet ID in that URL.");
   const gidMatch = sheetUrl.match(/[#&?]gid=(\d+)/);
-  const gid = gidMatch ? gidMatch[1] : "0";
-  return `https://docs.google.com/spreadsheets/d/${idMatch[1]}/export?format=csv&gid=${gid}`;
+  const base = `https://docs.google.com/spreadsheets/d/${idMatch[1]}/export?format=csv`;
+  return gidMatch ? `${base}&gid=${gidMatch[1]}` : base;
 }
 
 // Minimal CSV line parser handling double-quoted fields (incl. "" escapes),
