@@ -2,6 +2,7 @@
 layout: default
 title: Fury Road Definitions & Sanctions (TEST)
 sidebar: true
+theme: fury
 ---
 
 # Fury Road Definitions & Sanctions (TEST)

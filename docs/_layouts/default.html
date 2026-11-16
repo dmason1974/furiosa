@@ -193,10 +193,52 @@
       #side-nav details[open] summary { margin-bottom: 8px; }
     }
   </style>
+  {% if page.theme == "fury" %}
+  <link rel="icon" type="image/png" href="images/server-icon.png">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* Fury Road branding: opt in with `theme: fury` in front matter. Always dark. */
+    body.theme-fury {
+      --bg: #0e0b09;
+      --surface: #1b1511;
+      --text: #f1e9e0;
+      --muted: #b4a698;
+      --rule: #34291f;
+      --accent: #ff7a1a;
+      --accent-soft: #3a2310;
+      --gold: #ffc233;
+      background: radial-gradient(900px 440px at 50% -140px, rgba(255, 122, 26, 0.30), transparent 70%) top center / 100% 560px no-repeat var(--bg);
+      color-scheme: dark;
+    }
+    .theme-fury h1, .theme-fury h2, .theme-fury h3 {
+      font-family: "Oswald", "IBM Plex Sans", sans-serif;
+      letter-spacing: 0.02em;
+    }
+    .theme-fury h1 {
+      color: var(--gold);
+      font-weight: 700;
+      font-size: clamp(38px, 6vw, 58px);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .theme-fury h2 { text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+    .theme-fury h3 { font-weight: 500; }
+    #side-nav .logo {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 12px;
+      margin-bottom: 22px;
+    }
+    @media (max-width: 900px) {
+      #side-nav .logo { width: 88px; margin-bottom: 12px; }
+    }
+  </style>
+  {% endif %}
 </head>
-<body>
+<body{% if page.theme %} class="theme-{{ page.theme }}"{% endif %}>
   <main{% if page.sidebar %} class="has-nav"{% endif %}>
-    {% if page.sidebar %}<nav id="side-nav" aria-label="On this page"></nav>{% endif %}
+    {% if page.sidebar %}<nav id="side-nav" aria-label="On this page">{% if page.theme == "fury" %}<img class="logo" src="images/server-icon.png" alt="Fury Road">{% endif %}</nav>{% endif %}
     <div class="content">
       {{ content | replace: '<table>', '<div class="table-wrap"><table>' | replace: '</table>', '</table></div>' }}
       <footer>Furiosa · Fury Road</footer>
