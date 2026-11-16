@@ -436,10 +436,17 @@ src/config/
 - An uncaught `DiscordAPIError[10008] Unknown Message` (editing an
   interaction reply that no longer exists) crashed the whole process once
   this session — Node 20 terminates on unhandled promise rejections, and
-  systemd's `Restart=on-failure` brought it back in ~5s. Root cause not
-  investigated/fixed; if it recurs, the outer `catch` in `interactionCreate`
-  needs to swallow failures from the *success-path* `editReply` too, not
-  just the error-path one.
+  systemd's `Restart=on-failure` brought it back in ~5s. **Root cause found
+  and fixed 2026-11-16**: it recurred as `/registrations list` with 80
+  registrations (reply over Discord's 2000-char limit, `BASE_TYPE_MAX_LENGTH`).
+  The handlers end with `return interaction.editReply(...)` *without* `await`,
+  so a failing reply rejects outside the `try`/`catch` and nothing handles it.
+  The handler is now `handleInteraction`, and the `interactionCreate` listener
+  attaches a `.catch` that logs the error and tells the user (`❌ Error: ...`),
+  so one failed reply can't kill the process. `/registrations list` also now
+  splits its reply across messages (`editReplyChunked`). Still unfixed:
+  `/registrations export` puts everything in one code block, so a big event
+  will hit the 2000-char limit there and get the `❌ Error` reply instead.
 
 ## Reading Discord messages via the prod bot (2026-11-16)
 

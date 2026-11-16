@@ -1450,7 +1450,12 @@ client.once("ready", async () => {
 // ---------------------------
 // Interaction handler
 // ---------------------------
-client.on("interactionCreate", async (interaction) => {
+// Named so the listener at the bottom can attach a .catch. A bare
+// `return interaction.editReply(...)` inside the try block below rejects
+// *outside* it, which used to be an unhandled rejection that killed the whole
+// process (2026-11-16: /registrations list with 80 registrations exceeded
+// Discord's 2000-char reply limit).
+const handleInteraction = async (interaction) => {
   try {
     // Autocomplete for /register team, /registrations approve|reject_team team,
     // /draw zone|team, and /record_result match field
@@ -2686,13 +2691,15 @@ client.on("interactionCreate", async (interaction) => {
         }
         const teamNames = Object.keys(byTeam).sort((a, b) => a.localeCompare(b));
         if (teamNames.length === 0) return interaction.editReply(`No registrations for "${eventKey}" yet.`);
-        const lines = teamNames.map((team) => {
+        // Split across messages: 16 teams of 5 is well over Discord's 2000-char
+        // limit (an oversized reply here used to crash the whole bot).
+        const blocks = teamNames.map((team) => {
           const members = byTeam[team]
             .map((m) => `  - <@${m.userId}> (IGN: ${m.ign}) — ${m.status}`)
             .join("\n");
-          return `**${team}**\n${members}`;
+          return `**${team}**\n${members}\n`;
         });
-        return interaction.editReply(lines.join("\n\n"));
+        return editReplyChunked(interaction, "", blocks);
       }
 
       if (sub === "approve") {
@@ -2758,6 +2765,17 @@ client.on("interactionCreate", async (interaction) => {
       else await interaction.reply({ content: `❌ Error: ${msg}`, ephemeral: true });
     } catch (e) { console.error("Failed to reply to interaction:", e); }
   }
+};
+
+client.on("interactionCreate", (interaction) => {
+  handleInteraction(interaction).catch(async (err) => {
+    console.error("Unhandled interaction error:", err);
+    try {
+      const msg = `❌ Error: ${String(err?.message || err)}`.slice(0, 1900);
+      if (interaction.deferred || interaction.replied) await interaction.editReply(msg);
+      else await interaction.reply({ content: msg, ephemeral: true });
+    } catch (e) { console.error("Failed to report that error to the user:", e); }
+  });
 });
 
 client.login(process.env.DISCORD_TOKEN);
