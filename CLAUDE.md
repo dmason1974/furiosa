@@ -250,9 +250,19 @@ src/config/
   declaring war on every team in the theatre, air units/missiles/coastal
   batteries vs ships, whether flyover/territorial-waters rules apply while ships
   sail in during the truce, sanctions for the Rules of Engagement). **Layout
-  convention: every section is a text `##` header with its body in a plain
-  code block underneath** (bold doesn't render inside a code block, so use
-  aligned columns and keep lines under ~57 characters). Which definitions are
+  convention: every section is a text `##` header with its body in an
+  ```` ```ansi ```` code block underneath**, laid out wide (up to ~104 visible
+  characters per line: a desktop block is about 110 characters wide, and narrow
+  hand-wrapped lines looked cramped; a phone scrolls or wraps the long ones).
+  Bold doesn't render inside a code block, so use aligned columns and colour.
+  Colour is written as `{blue}`, `{green}`, `{red}`, `{yellow}`, `{gray}`,
+  `{pink}`, `{cyan}`, `{white}`, `{bold}` and `{/}` (reset) inside ```` ```ansi ````
+  blocks only; `renderAnsiMarkup()` turns them into real ANSI codes at post
+  time. Meaning: blue = labels, green = allowed / in use / enforced, red =
+  not allowed, yellow = a condition or open item, gray = not used. Escape codes
+  count toward the 2000-character limit. A section over the limit is split on
+  blank lines but **never inside a code fence**; a single code block that is
+  itself over the limit is an error telling you to add a `<!-- split -->`. Which definitions are
   enforced was inferred from the definitions page and earlier staff discussion,
   not confirmed with staff. **Verified with mocked unit tests only; not yet run
   on the real bot.**

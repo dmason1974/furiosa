@@ -778,6 +778,20 @@ function countryBlock(color, countries) {
   return ansiBlock(color, (countries || []).map((c) => ` ${c}`));
 }
 
+// rules.md can't hold raw escape characters comfortably, so inside a ```ansi
+// block it uses {blue} {green} {red} {yellow} {pink} {cyan} {white} {gray}
+// {bold} and {/} (reset), which are turned into real ANSI codes when posted.
+// Text outside ```ansi blocks is left alone.
+const ANSI_MARKUP = {
+  red: ANSI.red, green: ANSI.green, blue: ANSI.blue,
+  yellow: "\u001b[0;33m", pink: "\u001b[0;35m", cyan: "\u001b[0;36m", white: "\u001b[0;37m", gray: "\u001b[0;30m",
+  bold: "\u001b[1m", "/": ANSI.reset,
+};
+function renderAnsiMarkup(text) {
+  return text.replace(/```ansi\n([\s\S]*?)```/g, (_m, body) =>
+    "```ansi\n" + body.replace(/\{(red|green|blue|yellow|pink|cyan|white|gray|bold|\/)\}/g, (_t, k) => ANSI_MARKUP[k]) + "```");
+}
+
 // Matches the wording/formatting of the original hand-written #map-zones
 // reference channel's legend message (see map-zones-dump.txt from this
 // session) — dynamic only in the admin countries list, which comes from
@@ -816,10 +830,25 @@ function splitRulesMarkdown(text, maxLen = 1900) {
   const out = [];
   for (const section of sections) {
     if (section.length <= maxLen) { out.push(section); continue; }
-    for (const chunk of chunkBlocks("", section.split(/\n{2,}/), maxLen, "\n\n").filter(Boolean)) {
-      if (chunk.length <= 2000) { out.push(chunk); continue; }
-      // a single block over the limit: fall back to splitting it on lines
-      out.push(...chunkBlocks("", chunk.split("\n"), maxLen, "\n").filter(Boolean));
+    // Too long for one message: split on blank lines, but never inside a ```
+    // fence (that would leave a half-open code block in each message).
+    const blocks = [];
+    let cur = [];
+    let inFence = false;
+    for (const line of section.split("\n")) {
+      if (/^\s*```/.test(line)) inFence = !inFence;
+      if (!inFence && line.trim() === "") {
+        if (cur.length) { blocks.push(cur.join("\n")); cur = []; }
+      } else {
+        cur.push(line);
+      }
+    }
+    if (cur.length) blocks.push(cur.join("\n"));
+    for (const chunk of chunkBlocks("", blocks, maxLen, "\n\n").filter(Boolean)) {
+      if (chunk.length > 2000) {
+        throw new Error(`A block in rules.md is ${chunk.length} characters, over Discord's 2000 limit. Add a <!-- split --> inside it.`);
+      }
+      out.push(chunk);
     }
   }
   return out;
@@ -832,7 +861,7 @@ async function publishEventRules(guild, eventKey, rulesChannelId, dryrun) {
   const channel = await guild.channels.fetch(rulesChannelId).catch(() => null);
   if (!channel) return { skipped: true, reason: "#rules channel could not be fetched" };
 
-  const messages = splitRulesMarkdown(readText(rulesPath));
+  const messages = splitRulesMarkdown(renderAnsiMarkup(readText(rulesPath)));
   const existingIds = await db.getEventRulesMessageIds(eventKey, DB_IS_TEST);
 
   if (dryrun) {
