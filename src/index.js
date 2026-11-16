@@ -29,17 +29,27 @@ const elo = require("./elo");
 // setPositions call after standing channels are created/found in /setup
 // event) and because "registered-teams" alphabetizes before "registration",
 // which registration's topic template (below) already depends on.
-const STANDING_CHANNEL_NAMES = ["applications", "event-chat", "registered-teams", "registration", "rules", "zones"];
+const STANDING_CHANNEL_NAMES = ["applications", "event-chat", "looking-for-team", "registered-teams", "registration", "rules", "zones"];
 // Staff-only standing channels: hidden from @everyone, visible only to
 // EVENT_STAFF_ROLE_ID (plus the bot itself, so it can post there).
 const STANDING_CHANNEL_STAFF_ONLY = new Set(["applications"]);
 // Standing channels where @everyone may send messages; all others are view-only
 // (e.g. "registration" is posted to only via its apply panel component, not free text).
-const STANDING_CHANNEL_OPEN_POST = new Set(["event-chat"]);
+const STANDING_CHANNEL_OPEN_POST = new Set(["event-chat", "looking-for-team"]);
 // registration's topic is a function, not a plain string, because it links
 // to that event's own #registered-teams channel — a different channel ID
 // per event, so it can't be a fixed string shared across every event/server.
 const STANDING_CHANNEL_TOPICS = {
+  // Static text (no channel links): this channel is created before #registration,
+  // so its ID isn't known yet when the topic is first set.
+  "looking-for-team":
+    ".\n\n" +
+    "No team yet? Post here: who you are, your time zone, what you play, and what you're looking for.\n" +
+    "Teams short of players can post here too.\n" +
+    "\n" +
+    "Once you have a team, everyone on it signs up with ***/register*** in #registration.\n" +
+    "\n" +
+    "Note slowmode is enabled on this channel.",
   registration: (guildId, registeredTeamsChannelId) =>
     ".\n\n" +
     "***/register team:<name> ign:<name>*** — register yourself for your team (re-run to update; one entry per player)\n" +
@@ -53,6 +63,7 @@ const STANDING_CHANNEL_TOPICS = {
 // so this discourages free-text chatter now that Warboys have Send Messages
 // there, without blocking /register or /unregister.
 const STANDING_CHANNEL_SLOWMODE = {
+  "looking-for-team": 60, // 1 minute: keeps ads readable without blocking a quick reply
   registration: 3600, // 1 hour, in seconds
 };
 const WARBOY_GATED_COMMANDS = new Set(["register", "unregister"]);
@@ -144,10 +155,16 @@ function validateConfig(cfg) {
         for (const th of m.theatres) {
           if (!th.id)   errs.push(`Map ${m.mapNumber}: theatre missing id`);
           if (!th.name) errs.push(`Map ${m.mapNumber}: theatre missing name`);
-          if (!Array.isArray(th.teams) || th.teams.length !== 2) {
-            errs.push(`Map ${m.mapNumber} theatre ${th.id}: must have exactly 2 teams`);
+          // 2 teams = a duel; 3+ = a free-for-all (battle royale) in that theatre.
+          if (!Array.isArray(th.teams) || th.teams.length < 2) {
+            errs.push(`Map ${m.mapNumber} theatre ${th.id}: must have at least 2 teams`);
             continue;
           }
+          // Two teams in one theatre drawing on the same pool would be handed
+          // the same countries, which is always an allocation mistake.
+          const poolKeys = th.teams.map((t) => t.countryPool).filter(Boolean);
+          if (new Set(poolKeys).size !== poolKeys.length)
+            errs.push(`Map ${m.mapNumber} theatre ${th.id}: each team needs its own countryPool`);
           for (const team of th.teams) {
             if (!team.teamName)    errs.push(`Map ${m.mapNumber} theatre ${th.id}: team missing teamName`);
             if (!team.countryPool) errs.push(`Map ${m.mapNumber} theatre ${th.id}: team missing countryPool`);

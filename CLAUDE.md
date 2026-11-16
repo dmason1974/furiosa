@@ -40,10 +40,14 @@ src/config/
   field, no fallback. Don't reintroduce one without a good reason.
 - Multi-round events nest each round in its own subdirectory; single-round
   events keep `config.yml`/`thread.md` directly in the event directory.
-- The category + 6 standing channels (`applications`, `event-chat`,
-  `registered-teams`, `registration`, `rules`, `zones`) belong to the
-  **event** and are shared across all its rounds. Map channels/threads
-  belong to a **round** (or to the event directly, if it has no rounds).
+- The category + 7 standing channels (`applications`, `event-chat`,
+  `looking-for-team`, `registered-teams`, `registration`, `rules`, `zones`)
+  belong to the **event** and are shared across all its rounds. Map
+  channels/threads belong to a **round** (or to the event directly, if it
+  has no rounds). `looking-for-team` (2026-11-16) is open to everyone to post
+  in (1-minute slowmode) — it's where players without a team find one before
+  using `/register`; `/setup event` creates it on existing events the next
+  time it's re-run, and `/teardown event` removes it with the rest.
   `applications` is staff-only (hidden from `@everyone`, visible to
   `EVENT_STAFF_ROLE_ID` and the bot) — it's where Approve/Reject team-ready
   notifications post; see the `/register` entry below. `STANDING_CHANNEL_NAMES`
@@ -82,7 +86,7 @@ src/config/
 
 ### Commands
 
-- `/setup event event:<key> [dryrun]` — creates the category + 6 standing
+- `/setup event event:<key> [dryrun]` — creates the category + 7 standing
   channels if missing, and re-enforces their alphabetical order. Idempotent.
   Also publishes the rules index and the zones index (both below) as its
   last steps every time it runs.
@@ -167,6 +171,26 @@ src/config/
   - **Next planned work (not started)**: an "image import" feature — the
     original `#map-zones` channel also had a map graphic image attachment
     (`Country_Groups_3.png`) that isn't reproduced anywhere yet.
+- **Theatres can hold 2+ teams — free-for-all support (2026-11-16)**: a
+  theatre with exactly 2 teams is a duel (original behaviour, e.g.
+  `beyond-thunderdome`); 3 or more is a free-for-all (battle royale) in that
+  theatre. `validateConfig` only requires `>= 2` teams per theatre now, and
+  rejects two teams in one theatre sharing a `countryPool` (they would be
+  handed the same countries). `/setup maps` needed no other
+  change — it already loops `theatre.teams`. First user is **`water-wars`**
+  (the Capture the Flagship event, 16 teams of 5, 3 rounds, 4 maps; per-round
+  dirs `r1-ffa` = 2 maps, `r2-ffa` = 1 map, `r3-final` = 1 map): each ocean is a
+  4-team free-for-all and the last 2 flagships per ocean advance; the final is
+  one map, one theatre, whole ocean, last flagship wins. The 8 pools are the
+  port-drafted ones from `flagship-8team`. R1 teams are placed by a live draw
+  and **hand-authored** into `config.yml` afterwards (no bot draw command for
+  this). Team names and players in the committed configs are placeholders, and
+  the final's pools are empty on purpose: **which countries each finalist
+  plays is not decided**. The free-for-all end condition, tie-breaker and
+  diplomacy rule were also still open with staff on 2026-11-16, so
+  `thread.md` says only that the rules are being finalised. `flagship-4team`
+  and `flagship-8team` are the earlier duel templates and are left as they
+  were.
 - **Registrations-driven team threads (2026-07-05)**: a map entry's `zones`/
   `theatres` array can instead be `teams: "registrations"` — `/setup maps`
   then creates one private thread per **approved** `registrations` team
@@ -289,7 +313,7 @@ src/config/
   already-assigned zone or team (corrected to the reducing-set + hard-reject
   behavior described above).
   - **Deliberately deferred**: theatres-mode draw (`bop`-style events).
-    Theatres have two team slots per theatre plus a `countryPool` per slot —
+    Theatres have two (or, for free-for-all, more) team slots per theatre plus a `countryPool` per slot —
     a meaningfully different shape than zones' one-team-per-zone — so it
     wasn't built speculatively alongside this. Same
     fallback-from-registrations pattern should extend cleanly when needed.

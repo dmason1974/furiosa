@@ -1,0 +1,27 @@
+# Water Wars Final: the 4 remaining teams, one map, the whole ocean (no theatre split).
+# Last flagship standing wins. OPEN ITEM (TBC with staff): which countries each finalist plays.
+# The pools below are deliberately empty placeholders until that is decided.
+version: 5
+
+event:
+  key: "water-wars"
+  name: "Water Wars - Grand Final"
+  round: 3
+  teamSize: 5
+
+countryPools:
+  finalist1: { label: "Finalist 1", colour: "TBC", playableCountries: [], aiCountries: [] }
+  finalist2: { label: "Finalist 2", colour: "TBC", playableCountries: [], aiCountries: [] }
+  finalist3: { label: "Finalist 3", colour: "TBC", playableCountries: [], aiCountries: [] }
+  finalist4: { label: "Finalist 4", colour: "TBC", playableCountries: [], aiCountries: [] }
+
+maps:
+  - mapNumber: 4
+    theatres:
+      - id: "A"
+        name: "Grand Final (whole ocean)"
+        teams:
+          - { teamName: "Finalist 1", countryPool: finalist1, players: [] }
+          - { teamName: "Finalist 2", countryPool: finalist2, players: [] }
+          - { teamName: "Finalist 3", countryPool: finalist3, players: [] }
+          - { teamName: "Finalist 4", countryPool: finalist4, players: [] }

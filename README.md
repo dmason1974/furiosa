@@ -187,8 +187,9 @@ Use this only when you are sure you want a clean slate.
 
 ## Removing an Event Entirely
 
-`/teardown event` deletes the event's category and its 4 standing channels
-(`event-chat`, `rules`, `registered-teams`, `registration`) — use this to
+`/teardown event` deletes the event's category and its standing channels
+(`applications`, `event-chat`, `looking-for-team`, `registered-teams`,
+`registration`, `rules`, `zones`) — use this to
 fully clean up a test or finished event. It does **not** touch any round's
 map channels/threads; if those still exist, run `/teardown maps` for each
 round first, or the command will warn you they're still there.
