@@ -2,9 +2,10 @@
 layout: default
 title: Fury Road Definitions & Sanctions
 sidebar: true
+theme: fury
 ---
 
-# Fury Road Definitions & Sanctions
+# Definitions & Sanctions
 
 DRAFT for staff review · 16 November 2026
 
