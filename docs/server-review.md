@@ -29,7 +29,6 @@ The biggest gaps are in getting started and finding events. Rules content is sol
 | Finding events | Each event signs up a different way | Kingslayer used an external roster bot (Manolo); staff applications used Appy; Furiosa has `/register` | Choose one sign-up method and use it for every event |
 | Finding events | Upcoming post mixes six formats with no per-format detail | Fury Road x DTG: team sizes of 1, 2, 3 and 5, one date (Nov 21/22) for all six, no sign-up step, just a link to the DTG server | One forum post per format: dates, team size, how to join |
 | Finding events | Discord's built-in Events feature is unused | 0 scheduled events on the server; event times are spread across posters as UTC, GMT and `<t:…>` timestamps | Create a Discord Event for each key moment: registration close, zone draw, game start, war start. Each shows at the top of the channel list, in every viewer's own time zone, and notifies anyone who clicked Interested |
-| Finding events | Key rule changes buried in chat-style posts | "No more elite maps" (Sep 21) is one plain announcement and contradicts older posters | Put standing changes in #event-rules, not just announcements |
 | Rules | Rules split across 17 channels | #code-of-conduct, #event-rules, #sanctions and 14 definition channels averaging about 360 characters each | One #rulebook with three sections: win conditions, violations, map terms. Furiosa's rules index already builds this per event |
 | Rules | Definitions mix three kinds of term | Win conditions (3), violations (9) and map concepts (2) sit in one near-alphabetical list | Group by kind, with a one-line "what this means for you" for each |
 | Rules | A few definitions are unclear or have typos | Market blocking ("moved there by 0.1 steps"); "boundy", "a paths", "Each team choose" | Light copy-edit |
@@ -55,7 +54,6 @@ The first five fix most of jj's complaint and take about an evening. None need n
 - [ ] Pick one sign-up method for all events and describe it in #start-here.
 - [ ] Stop linking per-event channels from permanent posts. Link #upcoming-event or the event's forum post instead.
 - [ ] Use @everyone only for event launches and results. For reminders, rely on Discord Events notifications and the opt-in role.
-- [ ] Move standing rule changes (such as no elite maps) into #event-rules.
 
 **When there's time**
 
