@@ -116,6 +116,22 @@
     }
     footer { margin-top: 72px; color: var(--muted); font-size: 13px; font-family: "IBM Plex Mono", monospace; }
 
+    /* Images beside their text: add {: .side} after the image, placed before the paragraph. */
+    img.side {
+      float: right;
+      width: 340px;
+      height: 300px;
+      object-fit: contain;
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      border-radius: 8px;
+      margin: 4px 0 16px 28px;
+    }
+    h3 { clear: both; }
+    @media (max-width: 720px) {
+      img.side { float: none; display: block; width: 100%; height: auto; max-height: 360px; margin: 8px 0 16px; }
+    }
+
     /* Opt-in side navigation: set `sidebar: true` in a page's front matter. */
     h2, h3 { scroll-margin-top: 24px; }
     main.has-nav {

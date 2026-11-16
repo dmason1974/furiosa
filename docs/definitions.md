@@ -14,6 +14,8 @@ These are the standing terms every Fury Road event uses. They define what counts
 
 ### Nation's territory {#nations-territory}
 
+![Example of a nation's territory on the coast of Angola](images/nations-territory.png){: .side}
+
 **A nation's territory consists of:**
 
 - Its assigned **starting land mass** (homeland cities and provinces)
@@ -21,9 +23,9 @@ These are the standing terms every Fury Road event uses. They define what counts
 - **Airspace** above both homeland land and territorial waters
 - Any **occupied territories**
 
-![Example of a nation's territory on the coast of Angola](images/nations-territory.png)
-
 ### Territorial waters {#territorial-waters}
+
+![New Zealand with navigable paths in green and blocked paths in red](images/territorial-waters.png){: .side}
 
 A nation's territorial waters:
 
@@ -34,8 +36,6 @@ A nation's territorial waters:
 - No nation may traverse a path that connects a sea-connection vertex directly to another nation's land.
 
 In the example, the green paths can be navigated and the red cannot.
-
-![New Zealand with navigable paths in green and blocked paths in red](images/territorial-waters.png)
 
 ## Violations {#violations}
 
@@ -73,11 +73,11 @@ Any country that **refuses or fails to make peace** during an active TRUCE will 
 
 ### Flyover {#flyover}
 
+![An air unit's green patrol radius overlapping a nation's territory near Kharkiv](images/flyover.png){: .side}
+
 A flyover is any instance where an air unit passes through, circles above, or briefly enters a nation's territory, including territorial waters.
 
 For example, this would be considered a violation of a nation's airspace, as the patrol radius overlaps another nation's territory.
-
-![An air unit's green patrol radius overlapping a nation's territory near Kharkiv](images/flyover.png)
 
 ### Gold usage {#gold-usage}
 
