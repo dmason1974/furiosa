@@ -8,7 +8,7 @@ sidebar: true
 
 DRAFT for staff review · 16 November 2026
 
-This page sets out the global definitions used in running events on the Fury Road server, and the sanctions that apply where an individual event's rules enforce them.
+This page sets out the global definitions we used when running events on the Fury Road server, and the sanctions that apply where an individual event's rules enforce them.
 {: .plain}
 
 ## Definitions {#definitions}
@@ -122,6 +122,10 @@ Where an event prohibits something and a team breaches the rule, the breach typi
 | [Market blocking](#market-blocking) | The value of the resources used to block the market |
 | [Restricted unit usage](#restricted-unit-usage) | The units are destroyed |
 | [Unjustified engagement](#unjustified-engagement) | 1.5 × cost in each of Supplies, Components, Fuel, Electronics, Cash and Rare materials, per damaged unit |
+
+## Support {#support}
+
+If any definition or sanction is unclear, please feel free to raise a support ticket in [#support-tickets](https://discord.com/channels/1464807025815978110/1464887983332134933) on the Fury Road Discord server.
 
 ## Notes for staff (remove before publishing) {#staff-notes}
 
