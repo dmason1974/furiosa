@@ -1,54 +1,14 @@
-# Fury Road Event Rules
+---
+layout: default
+title: Fury Road Definitions
+sidebar: true
+---
+
+# Fury Road Definitions
 
 DRAFT for staff review · 16 November 2026
 
-These are the standing definitions every Fury Road event uses. Each event's poster says which ones apply to that event. Nothing here is final until staff sign off.
-
-## Contents
-
-**Win conditions**
-
-- [Capture the Flagship](#capture-the-flagship)
-- [Homeland Supremacy](#homeland-supremacy)
-- [Sacred Ground](#sacred-ground)
-
-**Violations**
-
-- [Act of war](#act-of-war)
-- [Conspiracy](#conspiracy)
-- [Espionage](#espionage)
-- [Failing to make peace](#failing-to-make-peace)
-- [Flyover](#flyover)
-- [Gold usage](#gold-usage)
-- [Market blocking](#market-blocking)
-- [Restricted unit usage](#restricted-unit-usage)
-- [Unjustified engagement](#unjustified-engagement)
-
-**Map terms**
-
-- [Nation's territory](#nations-territory)
-- [Territorial waters](#territorial-waters)
-
-## Win conditions {#win-conditions}
-
-A win condition is set per map or event. Where it is the selected win condition, the rules below apply.
-
-### Capture the Flagship {#capture-the-flagship}
-
-- Each team designates a single Naval Veteran as its flagship at the start of the match, with the team's name.
-- The flagship must remain identifiable at all times and may not be changed once designated.
-- A team wins the match immediately when the opposing team's flagship is destroyed.
-
-### Homeland Supremacy {#homeland-supremacy}
-
-- Only captured homeland cities from the opposition count towards victory. This is a simple count of the number of homeland cities captured.
-- A team wins the match immediately when capturing all homeland cities.
-
-### Sacred Ground {#sacred-ground}
-
-- Each team chooses 2 Holy Cities.
-- A team wins the match immediately when capturing one of the designated Holy Cities.
-- Teams must announce their Holy Cities within 2 hours of game start.
+These are the standing terms every Fury Road event uses. They define what counts as a violation and what the map terms mean. The rules for a specific event, including which of these apply and its win condition, are on that event's poster. Nothing here is final until staff sign off.
 
 ## Violations {#violations}
 
@@ -154,7 +114,6 @@ In the example, the green paths can be navigated and the red cannot.
 **Open questions**
 
 1. **Market blocking:** what does "moved there by 0.1 steps" mean in game terms? Does "All trades must be pre-coordinated" conflict with **Conspiracy**?
-2. **Sacred Ground:** whose Holy Cities does a team capture? Assumed to be the opponent's.
-3. **Grouping:** **Flyover** and **Act of war** are really about territory. Move them next to the Map terms?
-4. **Images:** the three screenshots come from the original definition channels. Check they still make sense, and caption **Nation's territory** properly (what is the red line showing?).
-5. A one-line "what this means for you" under each term, as the server review suggested. Not written yet, as it would be guessing at intent.
+2. **Grouping:** **Flyover** and **Act of war** are really about territory. Move them next to the Map terms?
+3. **Images:** the three screenshots come from the original definition channels. Check they still make sense, and caption **Nation's territory** properly (what is the red line showing?).
+4. A one-line "what this means for you" under each term, as the server review suggested. Not written yet, as it would be guessing at intent.
