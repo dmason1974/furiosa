@@ -5,7 +5,7 @@ sidebar: true
 theme: fury
 ---
 
-# Fury Road Definitions & Sanctions (TEST)
+# Definitions & Sanctions (TEST)
 
 TEST COPY for the Fury Road testing server. The live page is [definitions.html](definitions.html).
 
