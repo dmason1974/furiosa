@@ -865,7 +865,7 @@ async function publishEventRules(guild, eventKey, rulesChannelId, dryrun) {
   // one block, so sections run together. End every message with a line holding
   // U+2800 (a blank braille cell, which is not whitespace so it survives) to
   // keep a visible gap between sections.
-  const messages = splitRulesMarkdown(renderAnsiMarkup(readText(rulesPath))).map((m) => `${m}\n⠀`);
+  const messages = splitRulesMarkdown(renderAnsiMarkup(readText(rulesPath))).map((m) => `${m}\n\u2800`);
   const existingIds = await db.getEventRulesMessageIds(eventKey, DB_IS_TEST);
 
   if (dryrun) {
