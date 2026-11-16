@@ -8,7 +8,7 @@ sidebar: true
 
 TEST COPY for the Fury Road testing server. The live page is [definitions.html](definitions.html).
 
-This page sets out the global definitions we used when running events on the Fury Road server, and the sanctions that apply where an individual event's rules enforce them.
+This page sets out the global definitions we use when running events on the Fury Road server, and the sanctions that apply where an individual event's rules enforce them.
 {: .plain}
 
 If any definition or sanction is unclear, please feel free to raise a support ticket in [#support-tickets](https://discord.com/channels/1209791658082705418/1569416428560588833) on the Fury Road testing Discord server. If you are not on the server yet, [join here](https://discord.gg/AYDrmbgDpX).

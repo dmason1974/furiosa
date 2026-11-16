@@ -8,7 +8,7 @@ sidebar: true
 
 DRAFT for staff review · 16 November 2026
 
-This page sets out the global definitions we used when running events on the Fury Road server, and the sanctions that apply where an individual event's rules enforce them.
+This page sets out the global definitions we use when running events on the Fury Road server, and the sanctions that apply where an individual event's rules enforce them.
 {: .plain}
 
 If any definition or sanction is unclear, please feel free to raise a support ticket in [#support-tickets](https://discord.com/channels/1464807025815978110/1464887983332134933) on the Fury Road Discord server. If you are not on the server yet, [join here](https://discord.gg/Bkx8TbRhDZ).

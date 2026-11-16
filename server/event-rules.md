@@ -20,14 +20,16 @@ These principles **apply consistently across all Fury Road events** and persist 
 
 ---
 
+## 💰 Definitions & Sanctions
+
+The global definitions we use when running events on the Fury Road server, and the sanctions that apply where an individual event's rules enforce them are set out in:
+
+[Fury Road Definitions & Sanctions](<https://dmason1974.github.io/furiosa/definitions.html>)
+
+---
+
 ## ⚖️ Dispute Resolution & Rule Breaches
 
 - Disputes, concerns, or suspected rule breaches must be raised via **<#SUPPORT_TICKETS_CHANNEL_ID>**.
 - It is highly recommend that in game rule breaks are accompanied with 📸 screenshots as evidence.
 - Public arguments, refusal to comply with moderator instructions, or attempts to litigate decisions in-game will not be entertained.
-
----
-
-## 💰 Definitions & Sanctions
-
-What each term means, and the sanction that applies when an event's rules prohibit it, is set out in [Fury Road Definitions & Sanctions](<https://dmason1974.github.io/furiosa/definitions.html>).
