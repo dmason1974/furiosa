@@ -240,10 +240,22 @@ src/config/
   (early at 2 flagships, otherwise tiebreak by enemy ships sunk, weighted by
   class), the Rules of Engagement (no bombardment of cities, no invading
   provinces, the no-go waters, ships may move in), unit and settings rules
-  carried over from Beyond Thunderdome, and a "still being finalised" list
-  (tiebreaker class weights and how kills are counted, declaring war on every
-  team in the theatre, air units/missiles/coastal batteries vs ships, penalties).
-  **Verified with mocked unit tests only; not yet run on the real bot.**
+  carried over from Beyond Thunderdome, a Definitions & Sanctions section (links
+  the definitions page and lists, per definition, whether it is enforced for
+  this event: win-condition terms in use or not, Conspiracy/Espionage/Gold/
+  Market blocking/Restricted unit usage enforced, and the truce terms — Act of
+  war, Failing to make peace, Unjustified engagement, Flyover, Nation's
+  territory, Territorial waters — enforced during the truce only), and a "still
+  being finalised" list (tiebreaker class weights and how kills are counted,
+  declaring war on every team in the theatre, air units/missiles/coastal
+  batteries vs ships, whether flyover/territorial-waters rules apply while ships
+  sail in during the truce, sanctions for the Rules of Engagement). **Layout
+  convention: every section is a text `##` header with its body in a plain
+  code block underneath** (bold doesn't render inside a code block, so use
+  aligned columns and keep lines under ~57 characters). Which definitions are
+  enforced was inferred from the definitions page and earlier staff discussion,
+  not confirmed with staff. **Verified with mocked unit tests only; not yet run
+  on the real bot.**
 - **Event map graphic, `src/config/<event>/map.png`**: posted into `#zones` by
   `/setup zones` / `/setup event` (see `publishZonesIndex`). `water-wars/map.png`
   is the naval theatre map (Pacific 60°N, Indo-Atlantic 70°N, split at 80°E, south
