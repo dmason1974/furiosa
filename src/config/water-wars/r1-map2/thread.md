@@ -1,8 +1,7 @@
 ## TEAM THREAD
 
 **Round:** {{EVENT_ROUND}}
-**Map:** {{MAP_NUMBER_PAD2}}
-**Ocean:** {{THEATRE_NAME}}
+**Zone:** {{ZONE_NUMBER}} (zones 1-4 are in the Pacific, zones 5-8 in the Indo-Atlantic)
 
 ---
 
@@ -14,9 +13,8 @@
 {{PLAYERS_MENTIONS}}
 
 ---
-**Country Pool:** {{COUNTRY_POOL_LABEL}}
 
-### Playable countries
+### Your countries
 {{PLAYABLE_COUNTRIES}}
 
 ### AI countries (open to conquer)
@@ -24,7 +22,8 @@
 
 ---
 
-> **Admin countries (not capturable):** Cuba, New Zealand
+> **Admin countries (not capturable):** {{ADMIN_COUNTRIES}}
+> Countries not listed above are not to be captured.
 
 ### 🏴‍☠️ Your flagship
 Name **one Naval Veteran** after your team. It must stay identifiable and can't be changed once named.

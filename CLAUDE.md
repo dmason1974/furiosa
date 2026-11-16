@@ -183,22 +183,43 @@ src/config/
   rejects two teams in one theatre sharing a `countryPool` (they would be
   handed the same countries). `/setup maps` needed no other
   change — it already loops `theatre.teams`. First user is **`water-wars`**
-  (the Capture the Flagship event, 16 teams of 5, 3 rounds, 4 maps; per-round
-  dirs `r1-ffa` = 2 maps, `r2-ffa` = 1 map, `r3-final` = 1 map): each ocean is a
-  4-team free-for-all and the last 2 flagships per ocean advance; the final is
-  one map, one theatre, whole ocean, last flagship wins. The 8 pools are the
-  port-drafted ones from `flagship-8team`. **While testing, all 22 non-pool,
-  non-admin countries are AI and non-conquerable, so every pool's `aiCountries`
-  is empty** (12 were listed as conquerable AI in earlier drafts, and the 10
-  Sub-Saharan countries were never listed). R1 teams are placed by a live draw
-  and **hand-authored** into `config.yml` afterwards (no bot draw command for
-  this). Team names and players in the committed configs are placeholders, and
-  the final's pools are empty on purpose: **which countries each finalist
-  plays is not decided**. The free-for-all end condition, tie-breaker and
-  diplomacy rule were also still open with staff on 2026-11-16, so
-  `thread.md` says only that the rules are being finalised. `flagship-4team`
-  and `flagship-8team` are the earlier duel templates and are left as they
-  were.
+  (the Capture the Flagship event, 16 teams of 5, 3 rounds, 4 maps): each
+  ocean is a 4-team free-for-all and the last 2 flagships per ocean advance;
+  the final is one map, one theatre, whole ocean, last flagship wins.
+  **Rounds `r1-map1`, `r1-map2` and `r2` have no `config.yml`, only a
+  `thread.md`**, so `/setup maps` uses the DB-driven zones path (one map
+  channel per round key): the 8 zones and their homeland countries come from
+  the zones sheet (`/setup zones`, 5 countries each, zones 1-4 Pacific and 5-8
+  Indo-Atlantic, port-drafted as in `flagship-8team`), teams come from approved
+  `/registrations`, and who plays which zone comes from the draw sheet
+  (`/setup draw`, below). Round 1 is two map channels because the DB path makes
+  exactly one per round key. `r3-final` still has a hand-authored `config.yml`
+  (one 4-team theatre, no ocean split) and its pools are empty on purpose:
+  **which countries each finalist plays is not decided**. **While testing, all
+  22 non-pool, non-admin countries are AI and non-conquerable**, so the zones
+  sheet has no AI rows (12 were listed as conquerable AI in earlier drafts, and
+  the 10 Sub-Saharan countries were never listed). The free-for-all end
+  condition, tie-breaker and diplomacy rule were still open with staff on
+  2026-11-16, so `thread.md` says only that the rules are being finalised.
+  `flagship-4team` and `flagship-8team` are the earlier duel templates and are
+  left as they were.
+- **`/setup draw event:<key> sheet_url:<url> [dryrun]` (2026-11-16)** — the
+  draw is compiled in a Google Sheet **during the live draw event** and
+  imported here; it **replaces `/draw`**. One tab, columns `Round`, `Team`,
+  `Zone` (header names, any case; `Round` optional, blank for an event without
+  rounds): `Round` is a round folder name such as `r1-map1`, `Team` is a
+  registered team name, `Zone` a zone number from the zones sheet. A row with a
+  blank `Team` is an unfilled slot and is skipped, so a half-filled sheet can be
+  imported at any point and re-imported as it fills up. Everything is checked
+  before anything is written (team approved, zone imported, round folder
+  exists, no zone or team used twice in a round) and any error means nothing is
+  changed. It only adds or changes assignments, never deletes: a team or zone
+  that is in the DB but not in the sheet is left alone and reported. A changed
+  row is flagged ⚠️ in the plan (`replaces <team>` / `moves from Zone N`).
+  Writes via `db.setZoneAssignment`, the same store `/draw` used, so
+  `/setup maps` reads it unchanged. **Verified with mocked unit tests only
+  (new draw, re-run, swap, blank sheet, six error cases); not yet run against
+  the real bot and Discord.**
 - **Registrations-driven team threads (2026-07-05)**: a map entry's `zones`/
   `theatres` array can instead be `teams: "registrations"` — `/setup maps`
   then creates one private thread per **approved** `registrations` team
@@ -268,7 +289,10 @@ src/config/
   - **Known gap, deliberately deferred**: `/teardown event` does not delete
     `registrations.json`. Tearing down and recreating an event will resurface
     old registrations. Flagged, not fixed — revisit if it causes confusion.
-- **`/draw zone:<n> team:<name> [round:<key>]` (2026-07-09)** — records which
+- **`/draw zone:<n> team:<name> [round:<key>]` (2026-07-09) — DEPRECATED
+  (2026-11-16) in favour of `/setup draw` (a sheet import, see the
+  Water Wars entry above).** It still works and every reply now ends with a
+  deprecation notice; remove it once `/setup draw` has run a real draw. Records which
   approved team is assigned to which zone number, for **zones-mode events
   only** (`blood-pact`, `balance-of-power`; theatres mode, e.g. `bop`, is
   explicitly out of scope for now — see below). Run inside that event's

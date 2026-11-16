@@ -253,6 +253,16 @@ const setupCommand = new SlashCommandBuilder()
         o.setName("sheet_url").setDescription("Google Sheet URL (must be shared \"Anyone with the link can view\")").setRequired(true)
       )
       .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without creating anything"))
+  )
+  .addSubcommand((s) =>
+    s.setName("draw").setDescription("Import the team-to-zone draw from a Google Sheet (Round, Team, Zone)")
+      .addStringOption((o) =>
+        o.setName("event").setDescription("Event directory name in src/config").setRequired(true)
+      )
+      .addStringOption((o) =>
+        o.setName("sheet_url").setDescription("Google Sheet URL (must be shared \"Anyone with the link can view\")").setRequired(true)
+      )
+      .addBooleanOption((o) => o.setName("dryrun").setDescription("Print plan without changing anything"))
   );
 
 const teardownCommand = new SlashCommandBuilder()
@@ -294,7 +304,7 @@ const unregisterCommand = new SlashCommandBuilder()
 
 const drawCommand = new SlashCommandBuilder()
   .setName("draw")
-  .setDescription("Record which approved team is assigned to which zone (run in #registered-teams)")
+  .setDescription("DEPRECATED, use /setup draw. Assign one approved team to a zone (run in #registered-teams)")
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addIntegerOption((o) =>
     o.setName("zone").setDescription("Zone number").setRequired(true).setAutocomplete(true)
@@ -1018,6 +1028,42 @@ function parseZonesCsv(csvText) {
   }
 
   return { zones, adminCountries, warnings };
+}
+
+// Parses the draw sheet's CSV (one tab: Round, Team, Zone) into
+// { rows: [{ line, round, team, teamRaw, zone }], warnings }. The draw is
+// compiled live during the draw event, so a half-filled sheet is normal: a row
+// with a blank Team is an unfilled slot and is skipped. Round is optional
+// (blank = an event with no rounds). Team is lower-cased to match how
+// /register stores team names.
+function parseDrawCsv(csvText) {
+  const lines = csvText.split(/\r?\n/).filter((l) => l.length > 0);
+  if (lines.length === 0) throw new Error("Sheet CSV export was empty.");
+
+  const header = parseCsvLine(lines[0]).map((h) => h.trim().toLowerCase());
+  const teamIdx  = header.indexOf("team");
+  const zoneIdx  = header.indexOf("zone");
+  const roundIdx = header.indexOf("round");
+  if (teamIdx === -1 || zoneIdx === -1) {
+    throw new Error(`Sheet must have "Team" and "Zone" columns, and optionally "Round" (found: ${header.join(", ")}).`);
+  }
+
+  const rows = [];
+  const warnings = [];
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseCsvLine(lines[i]);
+    const teamRaw = (row[teamIdx] || "").trim();
+    if (!teamRaw) continue; // unfilled slot
+    const zoneRaw = (row[zoneIdx] || "").trim();
+    const zone = Number(zoneRaw);
+    if (!zoneRaw || !Number.isInteger(zone)) {
+      warnings.push(`Row ${i + 1}: "${teamRaw}" has no valid Zone ("${zoneRaw}") — skipped.`);
+      continue;
+    }
+    const round = roundIdx === -1 ? "" : (row[roundIdx] || "").trim();
+    rows.push({ line: i + 1, round, team: teamRaw.toLowerCase(), teamRaw, zone });
+  }
+  return { rows, warnings };
 }
 
 // ---------------------------
@@ -2294,6 +2340,137 @@ client.on("interactionCreate", async (interaction) => {
     }
 
 
+    // ---- /setup draw ----
+    // The draw is compiled in a Google Sheet during the live draw event and
+    // imported here; this replaces the one-team-per-command /draw. Safe to run
+    // repeatedly on a half-filled sheet: blank Team rows are skipped, rows that
+    // already match are left alone, and nothing is ever deleted.
+    if (interaction.commandName === "setup" && interaction.options.getSubcommand() === "draw") {
+      const eventKey = interaction.options.getString("event");
+      const sheetUrl = interaction.options.getString("sheet_url");
+      const dryrun   = interaction.options.getBoolean("dryrun") ?? false;
+
+      let csvText;
+      try {
+        const res = await fetch(sheetCsvExportUrl(sheetUrl));
+        if (!res.ok) {
+          return interaction.editReply(
+            `Couldn't fetch that sheet (HTTP ${res.status}). Make sure it's shared "Anyone with the link can view".`
+          );
+        }
+        csvText = await res.text();
+      } catch (e) {
+        return interaction.editReply(`Failed to fetch sheet: ${String(e?.message || e)}`);
+      }
+
+      let parsed;
+      try {
+        parsed = parseDrawCsv(csvText);
+      } catch (e) {
+        return interaction.editReply(`Failed to parse sheet: ${String(e?.message || e)}`);
+      }
+      const warnNote = parsed.warnings.length ? `\nWarnings:\n${parsed.warnings.map((w) => `- ${w}`).join("\n")}` : "";
+
+      const zoneDefs = await db.getZoneDefinitions(eventKey, DB_IS_TEST);
+      const validZones = new Set(Object.keys(zoneDefs?.zones || {}).map(Number));
+      if (validZones.size === 0) {
+        return interaction.editReply(`No zone data imported for "${eventKey}" yet — run \`/setup zones\` first.`);
+      }
+      const entries = await db.getRegistrationEntries(eventKey, DB_IS_TEST);
+      const approvedTeams = new Set(
+        Object.values(entries).filter((e) => e.status === "approved").map((e) => e.team)
+      );
+
+      // Validate every row before writing anything, so a bad sheet changes nothing.
+      const errors = [];
+      const byRound = new Map(); // round -> { zones: Map(zone -> row), teams: Map(team -> row) }
+      for (const r of parsed.rows) {
+        const where = r.round ? ` in round "${r.round}"` : "";
+        if (r.round && !fs.existsSync(roundDir(eventKey, r.round))) {
+          errors.push(`Row ${r.line}: round "${r.round}" has no folder in src/config/${eventKey}/.`);
+          continue;
+        }
+        if (!validZones.has(r.zone)) {
+          errors.push(`Row ${r.line}: Zone ${r.zone} isn't part of "${eventKey}"'s imported zones.`);
+          continue;
+        }
+        if (!approvedTeams.has(r.team)) {
+          errors.push(`Row ${r.line}: "${r.teamRaw}" isn't an approved team for this event.`);
+          continue;
+        }
+        const g = byRound.get(r.round) || { zones: new Map(), teams: new Map() };
+        byRound.set(r.round, g);
+        const zonePrev = g.zones.get(r.zone);
+        const teamPrev = g.teams.get(r.team);
+        if (zonePrev && zonePrev.team === r.team) continue; // the same row twice
+        if (zonePrev) {
+          errors.push(`Row ${r.line}: Zone ${r.zone} is given to both "${zonePrev.teamRaw}" (row ${zonePrev.line}) and "${r.teamRaw}"${where}.`);
+          continue;
+        }
+        if (teamPrev) {
+          errors.push(`Row ${r.line}: "${r.teamRaw}" is in both Zone ${teamPrev.zone} (row ${teamPrev.line}) and Zone ${r.zone}${where}.`);
+          continue;
+        }
+        g.zones.set(r.zone, r);
+        g.teams.set(r.team, r);
+      }
+      if (errors.length) {
+        return editReplyChunked(
+          interaction,
+          "Couldn't import the draw. Fix these in the sheet and run it again (nothing was changed):",
+          errors.map((e) => `• ${e}`)
+        );
+      }
+      if (byRound.size === 0) {
+        return interaction.editReply(`The sheet has no filled-in rows yet (every Team cell is blank).${warnNote}`);
+      }
+
+      const planLines = [];
+      const writes = [];
+      let nNew = 0, nUnchanged = 0, nChanged = 0;
+      for (const [round, g] of byRound) {
+        const existing = await db.getZoneAssignments(eventKey, round || null, DB_IS_TEST);
+        const zoneOfTeam = new Map(Object.entries(existing).map(([z, a]) => [a.team, Number(z)]));
+        planLines.push(`**${round || "(no round)"}**`);
+        for (const z of [...g.zones.keys()].sort((a, b) => a - b)) {
+          const r = g.zones.get(z);
+          const cur = existing[z]?.team;
+          const movedFrom = zoneOfTeam.get(r.team);
+          let note;
+          if (cur === r.team) {
+            note = "unchanged";
+            nUnchanged++;
+          } else {
+            writes.push({ round, row: r });
+            if (cur || (movedFrom != null && movedFrom !== z)) {
+              nChanged++;
+              note = "⚠️ " + [cur ? `replaces **${cur}**` : null, movedFrom != null && movedFrom !== z ? `moves from Zone ${movedFrom}` : null]
+                .filter(Boolean).join(", ");
+            } else {
+              nNew++;
+              note = "new";
+            }
+          }
+          planLines.push(`  Zone ${z} → ${r.teamRaw} (${note})`);
+        }
+        const open = [...validZones].filter((z) => !g.zones.has(z)).sort((a, b) => a - b);
+        if (open.length) planLines.push(`  Not filled in yet: Zone ${open.join(", ")}`);
+        const kept = Object.keys(existing).map(Number).filter((z) => !g.zones.has(z)).sort((a, b) => a - b);
+        if (kept.length) planLines.push(`  Already drawn but not in the sheet (left as is): Zone ${kept.join(", ")}`);
+      }
+
+      if (!dryrun) {
+        for (const w of writes) {
+          await db.setZoneAssignment(eventKey, w.round || null, w.row.zone, w.row.team, interaction.user.id, DB_IS_TEST);
+        }
+      }
+      return editReplyChunked(
+        interaction,
+        `${dryrun ? "Dry-run ✅ (nothing changed)" : "Done ✅"} — ${nNew} new, ${nUnchanged} unchanged, ${nChanged} changed.${warnNote}\n`,
+        planLines
+      );
+    }
+
     // ---- /teardown ----
     // ---- /teardown event ----
     if (interaction.commandName === "teardown" && interaction.options.getSubcommand() === "event") {
@@ -2372,9 +2549,13 @@ client.on("interactionCreate", async (interaction) => {
 
     // ---- /draw ----
     if (interaction.commandName === "draw") {
+      // Deprecated (2026-11-16): the draw is now compiled in a sheet and imported with /setup draw.
+      const reply = (m) => interaction.editReply(
+        `${m}\n\n⚠️ \`/draw\` is deprecated. Compile the draw in a sheet and use \`/setup draw\` instead.`
+      );
       const eventKey = await eventKeyForCategory(interaction.channel?.parentId);
       if (!eventKey) {
-        return interaction.editReply("Please run this in an event's #registered-teams channel.");
+        return reply("Please run this in an event's #registered-teams channel.");
       }
 
       const round      = interaction.options.getString("round") || null;
@@ -2384,10 +2565,10 @@ client.on("interactionCreate", async (interaction) => {
       const zoneDefs = await db.getZoneDefinitions(eventKey, DB_IS_TEST);
       const validZones = new Set(Object.keys(zoneDefs?.zones || {}).map(Number));
       if (validZones.size === 0) {
-        return interaction.editReply(`No zone data imported for "${eventKey}" yet — run \`/setup zones\` first.`);
+        return reply(`No zone data imported for "${eventKey}" yet — run \`/setup zones\` first.`);
       }
       if (!validZones.has(zoneNumber)) {
-        return interaction.editReply(`Zone ${zoneNumber} isn't part of "${eventKey}"'s imported zone data.`);
+        return reply(`Zone ${zoneNumber} isn't part of "${eventKey}"'s imported zone data.`);
       }
 
       const entries = await db.getRegistrationEntries(eventKey, DB_IS_TEST);
@@ -2395,7 +2576,7 @@ client.on("interactionCreate", async (interaction) => {
         Object.values(entries).filter((e) => e.status === "approved").map((e) => e.team)
       );
       if (!approvedTeams.has(team)) {
-        return interaction.editReply(`"${team}" isn't an approved team for this event.`);
+        return reply(`"${team}" isn't an approved team for this event.`);
       }
 
       // Zones and teams are each one-time picks — once assigned, neither can
@@ -2403,11 +2584,11 @@ client.on("interactionCreate", async (interaction) => {
       // autocomplete lists below. Corrections aren't supported yet.
       const existingAssignments = await db.getZoneAssignments(eventKey, round, DB_IS_TEST);
       if (existingAssignments[zoneNumber]) {
-        return interaction.editReply(`Zone ${zoneNumber} is already assigned to **${existingAssignments[zoneNumber].team}**.`);
+        return reply(`Zone ${zoneNumber} is already assigned to **${existingAssignments[zoneNumber].team}**.`);
       }
       const teamsAlreadyAssigned = new Map(Object.entries(existingAssignments).map(([z, a]) => [a.team, z]));
       if (teamsAlreadyAssigned.has(team)) {
-        return interaction.editReply(`**${team}** is already assigned to Zone ${teamsAlreadyAssigned.get(team)}.`);
+        return reply(`**${team}** is already assigned to Zone ${teamsAlreadyAssigned.get(team)}.`);
       }
 
       await db.setZoneAssignment(eventKey, round, zoneNumber, team, interaction.user.id, DB_IS_TEST);
@@ -2416,7 +2597,7 @@ client.on("interactionCreate", async (interaction) => {
       const lines = [...validZones].sort((a, b) => a - b)
         .map((z) => `Zone ${z}: ${assignments[z]?.team ?? "_unassigned_"}`);
 
-      return interaction.editReply(
+      return reply(
         `✅ Assigned **${team}** to Zone ${zoneNumber}.\n\nCurrent draw:\n${lines.join("\n")}`
       );
     }
