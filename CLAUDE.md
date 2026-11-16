@@ -385,6 +385,41 @@ src/config/
   needs to swallow failures from the *success-path* `editReply` too, not
   just the error-path one.
 
+## Reading Discord messages via the prod bot (2026-11-16)
+
+Claude sessions can read live Fury Road server messages using the prod bot's
+token. The token only exists in `/opt/furiosa/.env` on the Lightsail box
+(there is no local `.env`), so run a read-only script *on the box* rather
+than copying the token anywhere:
+
+```
+ssh furiosa-prod 'cd /opt/furiosa && sudo -u furiosa node -e "
+require(\"dotenv\").config({quiet:true});
+const {Client,GatewayIntentBits}=require(\"discord.js\");
+const c=new Client({intents:[GatewayIntentBits.Guilds]});
+c.once(\"clientReady\",async()=>{ /* fetch channels/messages here */ process.exit(0); });
+c.login(process.env.DISCORD_TOKEN);"'
+```
+
+- `furiosa-prod` is an SSH host alias in `~/.ssh/config` (key
+  `~/.ssh/id_ed25519_furiosa`). `GUILD_ID` is in the same `.env`.
+- Add `GatewayIntentBits.GuildMessages` (and `MessageContent`, enabled on the
+  bot application) when reading message history; `Guilds` alone only lists
+  channels.
+- **Never print, echo, copy or log the token.** Print only the messages
+  asked for, to the terminal; don't write them to disk.
+- **Only read the channels the user names.** Staff/sensitive channels
+  (`admin`, `modlog`, `strike-list`, `support-tickets`, etc.) are not to be
+  swept speculatively.
+- The bot can see all channels, but only ones that currently exist: deleted
+  channels (e.g. `#participant-roster`) can't be recovered. `channels.fetch()`
+  returns `null` for channel types discord.js doesn't recognise (e.g.
+  `server-hub`, type 20) — filter nulls, or use `c.rest.get("/guilds/<id>/channels")`
+  for the raw list. Threads need `/guilds/<id>/threads/active` and
+  `/channels/<id>/threads/archived/public`.
+- This is prod, so keep it read-only: no sends, edits or deletes, and don't
+  restart the service.
+
 ## Known constraints / non-negotiables
 
 - **Postgres/RDS is co-located in us-east-1** (`furiosa-db`, RDS Postgres 17,
