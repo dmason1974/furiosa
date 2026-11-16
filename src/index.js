@@ -861,7 +861,11 @@ async function publishEventRules(guild, eventKey, rulesChannelId, dryrun) {
   const channel = await guild.channels.fetch(rulesChannelId).catch(() => null);
   if (!channel) return { skipped: true, reason: "#rules channel could not be fetched" };
 
-  const messages = splitRulesMarkdown(renderAnsiMarkup(readText(rulesPath)));
+  // Discord trims trailing blank lines, and consecutive bot messages render as
+  // one block, so sections run together. End every message with a line holding
+  // U+2800 (a blank braille cell, which is not whitespace so it survives) to
+  // keep a visible gap between sections.
+  const messages = splitRulesMarkdown(renderAnsiMarkup(readText(rulesPath))).map((m) => `${m}\n⠀`);
   const existingIds = await db.getEventRulesMessageIds(eventKey, DB_IS_TEST);
 
   if (dryrun) {

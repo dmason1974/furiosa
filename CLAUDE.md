@@ -269,7 +269,11 @@ src/config/
   prohibition or sanction); a **bold** lead-in on each bullet; **bold** sub-
   headings; `*italic*` notes; `➢` for a sub-point. Text wraps naturally, so there
   is no line-width limit to manage (two earlier code-block layouts wrapped badly
-  at the window's width). Keep each `<!-- split -->` section under 2000
+  at the window's width). **Spacing between sections:** Discord trims trailing
+  blank lines and consecutive bot messages render as one block, so
+  `publishEventRules` ends every posted message with a line holding U+2800 (a
+  blank braille cell, which isn't whitespace so it survives). Don't rely on
+  newlines at the end of a section in `rules.md`. Keep each `<!-- split -->` section under 2000
   characters. A section over the limit is split on blank lines but **never inside
   a code fence**, and a single code block over the limit is an error telling you
   to add a `<!-- split -->`. `{blue}`-style colour tags in an ```` ```ansi ````
