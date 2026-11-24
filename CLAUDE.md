@@ -608,6 +608,76 @@ c.login(process.env.DISCORD_TOKEN);"'
   `user.email`, so this shouldn't recur, but flagging in case a different
   machine/environment picks this repo up.
 
+## Definitions & sanctions web page: state at 2026-11-24 (handoff)
+
+The 14 `definitions` channels and `#sanctions` are being replaced by one
+GitHub Pages page. **Nothing on the prod Discord server has been changed yet;
+all server-side changes so far are on the test server only.**
+
+- **Live page**: `docs/definitions.md` → https://dmason1974.github.io/furiosa/definitions.html
+  (Jekyll via the repo's Pages setting, source `main` / `/docs`, legacy build, no
+  `_config.yml`). Sections: Definitions, Map terms, Sanctions (all alphabetical;
+  keep lists alphabetical, the user dislikes any other order). Title "Definitions &
+  Sanctions" (no "Fury Road" in the H1: the logo carries it). Two intro paragraphs,
+  both tagged `{: .plain}` so they are body-size, not the layout's pull-quote.
+  Staff notes and the DRAFT line were removed from the live page. Sanction table is
+  built from `#sanctions` (resource names confirmed by the user: Components, Rare
+  materials, Electronics, Supplies, Fuel, Cash). Flyover = an act of war, same sanction.
+- **Test copy**: `docs/definitions-test.md` (…/definitions-test.html) is a manual copy
+  pointing at the **test** server (support-tickets link + its own invite), titled
+  "(TEST)", and still carries the "Notes for staff" section with open questions
+  (market-blocking wording/Conspiracy conflict; what the red line in the
+  Nation's-territory image shows; optional "what this means for you" lines). It
+  drifts from the live page, so regenerate it from `definitions.md` when that changes.
+- **Layout**: `docs/_layouts/default.html` has two opt-ins set in front matter:
+  `sidebar: true` (sticky nav built by JS from h2/h3, scrollspy, collapses on phones)
+  and `theme: fury` (dark palette from the server icon, Oswald headings, gold h1,
+  `docs/images/server-icon.png` above the nav and as favicon). `{: .plain}` resets
+  the intro-paragraph style; `{: .side}` on an image floats it right at a uniform
+  340x300 frame. `docs/server-review.md` does not opt in, so it keeps the original
+  warm style. Jekyll is not installed locally, so pages can only be checked by
+  pushing and loading the live URL (Pages rebuild takes ~1-2 minutes).
+- **Discord links used by the page**: prod guild `1464807025815978110`,
+  `#support-tickets` `1464887983332134933`, permanent bot-made invite to
+  `#start-here` `https://discord.gg/Bkx8TbRhDZ`. Test guild `1209791658082705418`,
+  `#support-tickets` `1569416428560588833`, permanent invite
+  `https://discord.gg/AYDrmbgDpX`.
+- **Test server (done)**: `#start-here` pinned post edited (the "Penalties" line was
+  replaced by a link to the test page) via `scripts/start-here.js`; Furiosa's own
+  `#event-rules` message (id `1571844357193994274`) was posted/edited as the bot
+  (sections in this order: Moderator Authority, Rules, Definitions & Sanctions,
+  Dispute Resolution). `definitions`, `#sanctions` and `#rulebook-draft` were
+  deleted by the user. A bot cannot edit another user's message, so the user
+  deletes the old human-authored `#event-rules` post by hand. Source text for the posts:
+  `server/start-here.md` and `server/event-rules.md` (templates point at the **live**
+  page; the test posts were sent with `definitions-test.html` swapped in on the fly,
+  and `SUPPORT_TICKETS_CHANNEL_ID` replaced).
+- **Waiting on**: the other server owners approving the page. Do **not** start the
+  items below until the user says so.
+  1. Bot: replace `publishRulesIndex` (it reads the `definitions` category, and
+     skips gracefully when absent) with one pinned pointer message to the page in
+     each event's `#rules`; then drop the dead code, the `event_rules_index.definitions`
+     usage and update the "Rules index" entry above.
+  2. Delete the obsolete `scripts/rulebook-draft.js` and `server/rulebook-draft.md`.
+  3. Prod, in this order so no link is ever dead: update `#start-here` and
+     `#event-rules` (bot-authored), then delete the old `definitions` category and
+     `#sanctions`. The user referred to "server resources" too; nothing with that
+     name was found, so ask what they meant.
+
+### Continuing on another machine
+
+Git carries the repo (`git pull` is enough). Not in git, and needed for Discord/prod work:
+- **SSH**: `~/.ssh/id_ed25519_furiosa` plus the `furiosa-prod` Host entry in
+  `~/.ssh/config` (HostName `52.20.102.165`, User `ubuntu`, that IdentityFile). Copy
+  the key over a safe channel; never commit it. Test it with `ssh furiosa-prod true`.
+- **GitHub**: `gh auth login` and push access to `dmason1974/furiosa`; git
+  `user.email` must be the noreply address (see "Known constraints").
+- **Claude memory** is per machine (`~/.claude/projects/<path>/memory`) and does not
+  travel; this section and the Discord-reading section above are the durable record.
+- Bot tokens stay only on the Lightsail box (`/opt/furiosa/.env`, `/opt/furiosa-test/.env`);
+  never copy them. Run the Discord helper scripts on the box over SSH (see "Reading
+  Discord messages via the prod bot").
+
 ## Future plan / open items
 
 - **Postgres migration + rules index — implemented and deployed
