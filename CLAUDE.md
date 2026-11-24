@@ -677,6 +677,10 @@ Git carries the repo (`git pull` is enough). Not in git, and needed for Discord/
 - Bot tokens stay only on the Lightsail box (`/opt/furiosa/.env`, `/opt/furiosa-test/.env`);
   never copy them. Run the Discord helper scripts on the box over SSH (see "Reading
   Discord messages via the prod bot").
+- **Water Wars bot work** (free-for-all theatres, `/setup draw`, per-event
+  `rules.md`, the test-server state and the ordered next steps) has its own
+  handoff in `HANDOFF-water-wars.md`. `HANDOFF.md` covers the separate server
+  review / onboarding thread. Read both after this file.
 
 ## Future plan / open items
 
