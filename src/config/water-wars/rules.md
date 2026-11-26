@@ -1,7 +1,7 @@
-🌊 Water Wars: Event Rules
+### 🌊 Water Wars: Event Rules
 *These rules apply to every round of this event. They sit on top of the server rules and the [definitions and sanctions](<https://dmason1974.github.io/furiosa/definitions.html>).*
 
-⚙️ Format
+### ⚙️ Format
 ```ansi
 {blue}Teams       {/} : 16 teams of 5 players
 {blue}Map         {/} : WW3 4x
@@ -15,7 +15,7 @@
 
 <!-- split -->
 
-🏆 Win Condition
+### 🏆 Win Condition
 ```ansi
 {blue}Flagship    {/} : Capture the Flagship: a team is out as soon as
                its flagship is destroyed
@@ -34,7 +34,7 @@
 
 <!-- split -->
 
-🎁 Prizes
+### 🎁 Prizes
 ```ansi
 {blue}Paid in{/} : Gold and SC only. Officers cannot be given as a
           prize
@@ -44,7 +44,7 @@
 
 <!-- split -->
 
-📅 Schedule
+### 📅 Schedule
 ```ansi
 {blue}Registration{/} : To be confirmed
 {blue}Draw        {/} : A live draw assigns every team to a map and a
@@ -57,7 +57,7 @@
 
 <!-- split -->
 
-📜 Rules
+### 📜 Rules
 🚢 Your flagship
 ```ansi
 {blue}Position{/} : At sea inside your theatre
@@ -84,10 +84,10 @@
 {red}Fighting   {/} : Outside your theatre
 {red}Flagship in{/} : Baltic Sea, Black Sea, Caspian Sea, Great Lakes,
               Persian Gulf, Red Sea, and all rivers and lakes
-{red}Land       {/} : Bombarding cities or taking another player's
-              provinces
+{red}Land       {/} : Bombarding or taking another player's cities,
+              ports or provinces. Exception: a city with
+              hostile units in it may be attacked
 {red}Officers   {/} : All except the Uncommon Infantry Officer
-{red}Ports      {/} : Attacking the port itself
 {red}Truce      {/} : Act of war, failing to make peace, flyover,
               mines, nation's territory, territorial waters,
               unjustified engagement
