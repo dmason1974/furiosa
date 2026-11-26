@@ -109,6 +109,11 @@ published by `/setup event`, `map.png` posted to `#zones`, ansi helpers
     the Drive sheet `water-wars-zones-no-ai` is redundant; `/registrations export` still builds
     one code block and fails over 2000 characters.
 
+> **Update, 26 Nov 2026:** wording fixes (no-AI `#zones` legend, thread text, rules
+> intro, "Not used" line removed) are committed but **not yet deployed to test**.
+> Existing team threads keep their old text unless torn down and re-created. The
+> prod bot deploy is **not approved**.
+
 ## 6. Links and ids (no secrets)
 
 | What | Id / URL |

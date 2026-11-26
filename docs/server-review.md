@@ -51,13 +51,13 @@ The first five fix most of jj's complaint and take about an evening. None need n
 
 **Next**
 
-- [ ] Pick one sign-up method for all events and describe it in #start-here.
+- [x] ~~Pick one sign-up method for all events and describe it in #start-here.~~ `/register` is described in `#start-here`, live on prod 26 Nov 2026.
 - [ ] Stop linking per-event channels from permanent posts. Link #upcoming-event or the event's forum post instead.
 - [ ] Use @everyone only for event launches and results. For reminders, rely on Discord Events notifications and the opt-in role.
 
 **When there's time**
 
-- [ ] Merge the 14 definition channels into one #rulebook, grouped as win conditions, violations and map terms.
+- [x] ~~Merge the 14 definition channels into one #rulebook, grouped as win conditions, violations and map terms.~~ Replaced by the [definitions and sanctions page](definitions.html), live on prod 26 Nov 2026. Win conditions are left to each event's rules.
 - [ ] Copy-edit the definitions and clarify market blocking.
 - [x] ~~Rename *Thunderdome-general* and *Events*; close the leftover ticket and map channels; delete the unused "event updates" role.~~ Leftover channels closed and the "event updates" role deleted. The category renames were dropped: *Thunderdome* is the name of the server's general area, not the first event, and *Events* stays.
 - [x] ~~Consider switching on Discord's built-in Onboarding (the server is already a Community server), with a question such as "Want event pings?" in place of the reaction-role post.~~ Onboarding is on in prod with a required pings question. The fresh-account test passed, and `#pings-for-update`, `#reception`, `#event discussion` and the Reaction Roles bot are gone.

@@ -18,9 +18,6 @@
 ### Playable countries
 {{PLAYABLE_COUNTRIES}}
 
-### AI countries (open to conquer)
-{{AI_COUNTRIES}}
-
 ---
 
 > **Admin countries (not capturable):** Cuba, New Zealand
@@ -32,7 +29,7 @@ It must stay at sea.
 
 ### How this round works
 This is the grand final: four teams, one map, the whole ocean. **The last flagship standing wins.**
-The full rules, including how the round ends, are in this event's rules channel (still being finalised).
+The full rules, including how the round ends, are in this event's rules channel. Some details are still to be confirmed.
 
 ---
 

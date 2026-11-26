@@ -1,5 +1,5 @@
 # 🌊 Water Wars: Event Rules
-*These rules apply to every round of this event. They sit on top of the server rules and the definitions in this channel.*
+*These rules apply to every round of this event. They sit on top of the server rules and the [definitions and sanctions](<https://dmason1974.github.io/furiosa/definitions.html>).*
 
 ## ⚙️ Format
 🔷 **16 teams** of 5 players, on the WW3 4x map
@@ -49,4 +49,3 @@
 🔷 **Definitions and sanctions:** the full wording and the sanction for each are on the [definitions and sanctions page](https://dmason1974.github.io/furiosa/definitions.html). In Water Wars:
 ➢ **Enforced all event:** conspiracy, espionage, gold usage, market blocking, restricted unit usage
 ➢ **Enforced during the truce:** act of war, failing to make peace, unjustified engagement, flyover, nation's territory, territorial waters
-➢ **Not used:** Homeland Supremacy, Sacred Ground

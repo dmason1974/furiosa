@@ -17,9 +17,6 @@
 ### Your countries
 {{PLAYABLE_COUNTRIES}}
 
-### AI countries (open to conquer)
-{{AI_COUNTRIES}}
-
 ---
 
 > **Admin countries (not capturable):** {{ADMIN_COUNTRIES}}
@@ -32,7 +29,7 @@ It must stay at sea inside your ocean.
 
 ### How this round works
 This is a free-for-all: you share your ocean with three other teams, and **the last 2 flagships in each ocean advance**.
-The full rules, including how the round ends, are in this event's rules channel (still being finalised).
+The full rules, including how the round ends, are in this event's rules channel. Some details are still to be confirmed.
 
 ---
 

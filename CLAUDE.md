@@ -249,8 +249,9 @@ src/config/
   page and only says which of the 14 terms are enforced (all event: Conspiracy,
   Espionage, Gold usage, Market blocking, Restricted unit usage; truce only: Act
   of war, Failing to make peace, Unjustified engagement, Flyover, Nation's
-  territory, Territorial waters; not used: Homeland Supremacy, Sacred Ground), with
-  no sanction amounts. That enforcement was inferred from the definitions page and
+  territory, Territorial waters), with no sanction amounts. Win conditions are
+  event-specific and are deliberately not on the global definitions page
+  (2026-11-26). That enforcement was inferred from the definitions page and
   staff discussion, not confirmed. **Still open (kept out of the player-facing
   channel on purpose):** prize amounts and who is paid; registration, draw and
   war dates and the start time; the tiebreaker's ship-class weights and how
@@ -282,6 +283,12 @@ src/config/
   enforced was inferred from the definitions page and earlier staff discussion,
   not confirmed with staff. **Verified with mocked unit tests only; not yet run
   on the real bot.**
+- **No-AI events (2026-11-26)**: when no zone in an event has any conquerable
+  AI (`water-wars`), `#zones` leaves out the green legend line and the per-zone
+  `### AI` sections, and the closing line bans capturing non-homeland countries
+  outright rather than "during truce". The `water-wars` `thread.md` files have no
+  AI section either, so restore it there if conquerable AI is ever added.
+  Events with AI are unchanged.
 - **Event map graphic, `src/config/<event>/map.png`**: posted into `#zones` by
   `/setup zones` / `/setup event` (see `publishZonesIndex`). `water-wars/map.png`
   is the naval theatre map (Pacific 60°N, Indo-Atlantic 70°N, split at 80°E, south
@@ -608,11 +615,10 @@ c.login(process.env.DISCORD_TOKEN);"'
   `user.email`, so this shouldn't recur, but flagging in case a different
   machine/environment picks this repo up.
 
-## Definitions & sanctions web page: state at 2026-11-24 (handoff)
+## Definitions & sanctions web page: state at 2026-11-26
 
-The 14 `definitions` channels and `#sanctions` are being replaced by one
-GitHub Pages page. **Nothing on the prod Discord server has been changed yet;
-all server-side changes so far are on the test server only.**
+The 14 `definitions` channels and `#sanctions` have been **replaced by one GitHub
+Pages page, on both servers** (prod done 2026-11-26, approved by the other owners).
 
 - **Live page**: `docs/definitions.md` → https://dmason1974.github.io/furiosa/definitions.html
   (Jekyll via the repo's Pages setting, source `main` / `/docs`, legacy build, no
@@ -642,27 +648,30 @@ all server-side changes so far are on the test server only.**
   `#start-here` `https://discord.gg/Bkx8TbRhDZ`. Test guild `1209791658082705418`,
   `#support-tickets` `1569416428560588833`, permanent invite
   `https://discord.gg/AYDrmbgDpX`.
-- **Test server (done)**: `#start-here` pinned post edited (the "Penalties" line was
-  replaced by a link to the test page) via `scripts/start-here.js`; Furiosa's own
-  `#event-rules` message (id `1571844357193994274`) was posted/edited as the bot
-  (sections in this order: Moderator Authority, Rules, Definitions & Sanctions,
-  Dispute Resolution). `definitions`, `#sanctions` and `#rulebook-draft` were
-  deleted by the user. A bot cannot edit another user's message, so the user
-  deletes the old human-authored `#event-rules` post by hand. Source text for the posts:
-  `server/start-here.md` and `server/event-rules.md` (templates point at the **live**
-  page; the test posts were sent with `definitions-test.html` swapped in on the fly,
-  and `SUPPORT_TICKETS_CHANNEL_ID` replaced).
-- **Waiting on**: the other server owners approving the page. Do **not** start the
-  items below until the user says so.
-  1. Bot: replace `publishRulesIndex` (it reads the `definitions` category, and
-     skips gracefully when absent) with one pinned pointer message to the page in
-     each event's `#rules`; then drop the dead code, the `event_rules_index.definitions`
-     usage and update the "Rules index" entry above.
-  2. Delete the obsolete `scripts/rulebook-draft.js` and `server/rulebook-draft.md`.
-  3. Prod, in this order so no link is ever dead: update `#start-here` and
-     `#event-rules` (bot-authored), then delete the old `definitions` category and
-     `#sanctions`. The user referred to "server resources" too; nothing with that
-     name was found, so ask what they meant.
+- **Posts**: `#start-here` is edited with `scripts/start-here.js` from
+  `server/start-here.md`. `#event-rules` is one bot-authored message from
+  `server/event-rules.md` (`SUPPORT_TICKETS_CHANNEL_ID` replaced when posted); there
+  is no committed script for it. Both templates point at the **live** page. On test,
+  `#event-rules` (message `1571844357193994274`) links the test page, while
+  `#start-here` was seen linking the live one (2026-11-26).
+- **Prod (done 2026-11-26)**: `#start-here` edited; `event draw` stage channel
+  (`1575462649821659257`) created under `Thunderdome-general`; new `#event-rules`
+  message `1575466116040622202`; `#sanctions` removed from onboarding default
+  channels and the Server Guide (this is what "server resources" meant); the 14
+  definition channels, `#sanctions` and the old human-authored rules post deleted.
+  Deleting a Discord category does **not** delete its channels.
+- **Win conditions** (Capture the Flagship, Homeland Supremacy, Sacred Ground) are
+  event-specific and deliberately not on the page: state them in each event's rules.
+- **A slow send can post twice**: a one-off discord.js script posting to prod
+  `#event-rules` produced two identical messages 16 s apart, probably a REST retry
+  after a timeout. Check the channel after any scripted post.
+- **Old announcements** (2026-02-06 and 2026-07-11) still link to deleted channels;
+  only their authors can edit them.
+- **Still to do** (needs a bot deploy to prod, which is **not** approved yet because
+  it would ship Water Wars): replace `publishRulesIndex` (it reads the
+  `definitions` category, and skips gracefully when absent) with one pinned pointer
+  message to the page in each event's `#rules`; then drop the dead code, the
+  `event_rules_index.definitions` usage and update the "Rules index" entry above.
 
 ### Continuing on another machine
 

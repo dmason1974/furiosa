@@ -45,11 +45,15 @@ ssh furiosa-prod 'rm -f /tmp/start-here.js /tmp/start-here.md'
   every run; that is cosmetic.
 - `scripts/open-info-channels.js` makes `code-of-conduct`, `📚-event-rules` and
   `⚖️-sanctions` read-only and visible to @everyone (needed for onboarding).
-- `scripts/rulebook-draft.js` posts `server/rulebook-draft.md` to a staff-only
-  `#rulebook-draft` (test only; no prod mode).
 - Bots never print the token. Never put it on a command line.
 
 ## 3. Where things stand
+
+> **Update, 26 Nov 2026:** the new `#start-here` is live on prod, the `event draw`
+> stage channel exists, and the definition channels and `#sanctions` are replaced by
+> the web page. This supersedes open items 1 and 3 below and the older prod and
+> `#rulebook-draft` notes in this section. See CLAUDE.md, "Definitions & sanctions
+> web page". `scripts/rulebook-draft.js` has been deleted.
 
 **Prod (Fury Road)**
 - Onboarding is ON: one required pings question ("Yes" gives War Boy + Wastelanders,

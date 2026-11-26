@@ -795,17 +795,21 @@ function renderAnsiMarkup(text) {
 // Matches the wording/formatting of the original hand-written #map-zones
 // reference channel's legend message (see map-zones-dump.txt from this
 // session) — dynamic only in the admin countries list, which comes from
-// whatever was imported for this event rather than being hardcoded.
-function zonesHeaderBody(adminCountries) {
+// whatever was imported for this event rather than being hardcoded. An event
+// with no conquerable AI anywhere gets no AI legend and a ban that isn't limited
+// to the truce.
+function zonesHeaderBody(adminCountries, hasAi) {
   const adminLines = (adminCountries || []).map((c) => `- ${c}`);
   return [
     "# 🌐 Map Division",
     ansiBlock("blue", ["Blue denotes Homeland playable"]),
-    ansiBlock("green", ["Green denotes conquerable AI"]),
+    ...(hasAi ? [ansiBlock("green", ["Green denotes conquerable AI"])] : []),
     "The following countries are Admin countries",
     ansiBlock("red", adminLines.length ? adminLines : ["- (none)"]),
     "",
-    "Countries that are not denoted as homeland or conquerable AI are not to be captured during truce.",
+    hasAi
+      ? "Countries that are not denoted as homeland or conquerable AI are not to be captured during truce."
+      : "Countries that are not denoted as homeland are not to be captured.",
   ].join("\n");
 }
 
@@ -969,7 +973,8 @@ async function publishZonesIndex(guild, eventKey, zonesChannelId, dryrun) {
     await headerMessage.delete().catch(() => null);
     headerMessage = null;
   }
-  const headerBody = zonesHeaderBody(zoneData.adminCountries);
+  const hasAi = zoneNumbers.some((n) => zoneData.zones[n].ai?.length > 0);
+  const headerBody = zonesHeaderBody(zoneData.adminCountries, hasAi);
   let headerAction;
   if (!headerMessage) {
     headerMessage = await zonesChannel.send(headerBody);
@@ -1013,8 +1018,7 @@ async function publishZonesIndex(guild, eventKey, zonesChannelId, dryrun) {
       `## Zone ${n}`,
       "### Homeland",
       countryBlock("blue", zone.homeland),
-      "### AI",
-      countryBlock("green", zone.ai),
+      ...(hasAi ? ["### AI", countryBlock("green", zone.ai)] : []),
     ].join("\n");
 
     if (existingMsg) {

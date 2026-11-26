@@ -31,5 +31,5 @@ The global definitions we use when running events on the Fury Road server, and t
 ## ⚖️ Dispute Resolution & Rule Breaches
 
 - Disputes, concerns, or suspected rule breaches must be raised via **<#SUPPORT_TICKETS_CHANNEL_ID>**.
-- It is highly recommend that in game rule breaks are accompanied with 📸 screenshots as evidence.
+- It is highly recommended that in-game rule breaks are accompanied by 📸 screenshots as evidence.
 - Public arguments, refusal to comply with moderator instructions, or attempts to litigate decisions in-game will not be entertained.
