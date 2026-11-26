@@ -85,29 +85,27 @@ published by `/setup event`, `map.png` posted to `#zones`, ansi helpers
 
 ## 5. Next steps, in order
 
-1. Commit and push this file, and `HANDOFF.md` (it is untracked, so it will not reach the
-   new machine otherwise). The user decides on the second one.
-2. Prove idempotency on the test server: run `/setup draw` and `/setup maps` for
+1. Prove idempotency on the test server: run `/setup draw` and `/setup maps` for
    `r1-map1` and `r1-map2` a second time (expect "unchanged" and "reused"), then try an
    error sheet (unapproved team, duplicate zone, wrong round name).
-3. Test the real `/register` to `/registrations approve` to `#registered-teams` to
+2. Test the real `/register` to `/registrations approve` to `#registered-teams` to
    `/unregister` flow. It has not been re-verified since the Postgres move.
-4. Regenerate the theatre map with the Baltic, Persian Gulf and Red Sea marked (the rules list
+3. Regenerate the theatre map with the Baltic, Persian Gulf and Red Sea marked (the rules list
    them; `map.png` does not).
-5. Redo the two `#upcoming-event` drafts for the free-for-all format once dates exist, and
+4. Redo the two `#upcoming-event` drafts for the free-for-all format once dates exist, and
    create the Discord scheduled event.
-6. `r3-final`: decide which countries the finalists play, then give it real pools (or move it
+5. `r3-final`: decide which countries the finalists play, then give it real pools (or move it
    to the DB path).
-7. Staff decisions still open (kept out of the channel on purpose; full list in CLAUDE.md):
+6. Staff decisions still open (kept out of the channel on purpose; full list in CLAUDE.md):
    prize amounts, registration/draw/war dates and start time, tiebreaker weights and kill
    counting, declaring war on every team, air units/missiles/coastal batteries vs ships,
    flyover/territorial waters during the truce, sanctions for the event's own rules.
-8. **Coordinate with the other session:** it plans to replace `publishRulesIndex` (the
+7. **Coordinate with the other session:** it plans to replace `publishRulesIndex` (the
    definitions-channel index) with one pinned pointer to the definitions page, once the other
    server owners approve. `rules.md` already links that page, so the two fit.
-9. **Production is not started.** Going live means deploying these commits to prod and the user
+8. **Production is not started.** Going live means deploying these commits to prod and the user
    running `/setup event` there. Only with the user's explicit go-ahead.
-10. Housekeeping: no clean-up script exists for the 80 fake registrations on the test DB;
+9. Housekeeping: no clean-up script exists for the 80 fake registrations on the test DB;
     the Drive sheet `water-wars-zones-no-ai` is redundant; `/registrations export` still builds
     one code block and fails over 2000 characters.
 
