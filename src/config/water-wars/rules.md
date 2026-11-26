@@ -60,9 +60,11 @@
 ### 📜 Rules
 🚢 Your flagship
 ```ansi
-{blue}Position{/} : At sea inside your theatre
-{blue}Unit    {/} : One Naval Veteran named after your team. It
-           cannot be changed
+{blue}Out of bounds{/} : Baltic Sea, Black Sea, Caspian Sea, Great Lakes,
+                Persian Gulf, Red Sea, and all rivers and lakes
+{blue}Position     {/} : At sea inside your theatre
+{blue}Unit         {/} : One Naval Veteran named after your team. It
+                cannot be changed
 ```
 ✅ Allowed
 ```ansi
@@ -82,8 +84,6 @@
 {red}Capturing  {/} : Any country outside your homeland, including
               admin countries
 {red}Fighting   {/} : Outside your theatre
-{red}Flagship in{/} : Baltic Sea, Black Sea, Caspian Sea, Great Lakes,
-              Persian Gulf, Red Sea, and all rivers and lakes
 {red}Land       {/} : Bombarding or taking another player's cities,
               ports or provinces. Exception: a city with
               hostile units in it may be attacked
