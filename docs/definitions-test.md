@@ -62,14 +62,24 @@ Any in-game action performed using premium currency (Gold), including but not li
 
 ### Market blocking {#market-blocking}
 
-Market blocking is defined as posting a significantly different price from the game's market price for a resource *unless* the market has already moved there by 0.1 steps.
+![An offer under Buy Supplies at the maximum price of 15](images/market-blocking.png){: .side}
 
-When using the market:
+![An offer under Sell Supplies at the maximum price of 15, far above the other offers](images/market-blocking-sell.png){: .side}
 
-- Sell resources as high as possible
-- Buy resources as low as possible
-- All trades must be pre-coordinated
-- Offers may not stay up long
+The market works as an auction, and teams use trades to move resources between their own members. **Market blocking** is placing an offer at an artificially high or low price that stops another team from doing this.
+
+A price is not artificial if the market got there through a sequence of offers, each moving it by 0.1.
+
+For example, the maximum price for supplies is 15 and other offers are around 4.9. The price has not risen to 15 step by step, so a supply offer at 15 is market blocking, whether it appears under **Buy Supplies** or **Sell Supplies**. The examples show a single unit, but blocks typically use many more.
+
+Blocking at either end of the market has consequences: the same [sanction](#sanctions) applies to an artificially high or an artificially low offer, as both stop the flow of resources within teams.
+
+To avoid blocking the market when trading with your team:
+
+- Agree the trade with your teammate before posting the offer
+- Sell as high as possible
+- Buy as low as possible
+- Don't leave offers up for long
 
 ### Restricted unit usage {#restricted-unit-usage}
 
@@ -139,6 +149,6 @@ Where an event prohibits something and a team breaches the rule, the breach typi
 
 **Open questions**
 
-1. **Market blocking:** what does "moved there by 0.1 steps" mean in game terms? Does "All trades must be pre-coordinated" conflict with **Conspiracy**?
+1. **Market blocking:** reworded 27 Nov 2026. "Sell as high as possible" could be read as allowing an offer at the maximum price.
 2. **Nation's territory image:** the caption is neutral. What is the red line in the screenshot showing?
 3. A one-line "what this means for you" under each term, as the server review suggested. Not written yet, as it would be guessing at intent.
